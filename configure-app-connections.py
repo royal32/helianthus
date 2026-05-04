@@ -22,7 +22,7 @@ from urllib import error, parse, request
 ROOT_DIR = Path(__file__).resolve().parent
 SSL_CONTEXT = ssl._create_unverified_context()
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(:-([^}]*))?\}")
-SEERR_MEDIA_SERVER_TYPE_JELLYFIN = 4
+SEERR_MEDIA_SERVER_TYPE_JELLYFIN = 2
 
 
 @dataclass(frozen=True)
