@@ -103,12 +103,39 @@ function set_qbit_config_value {
     mv "$tmp_file" "$config_file"
 }
 
+function set_xml_config_value {
+  local config_file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file
+
+  tmp_file=$(mktemp)
+  awk -v key="$key" -v value="$value" '
+    $0 ~ "<" key ">.*</" key ">" {
+      print "  <" key ">" value "</" key ">"
+      updated = 1
+      next
+    }
+    $0 ~ "</Config>" && !updated {
+      print "  <" key ">" value "</" key ">"
+      updated = 1
+    }
+    { print }
+  ' "$config_file" > "$tmp_file"
+  mv "$tmp_file" "$config_file"
+}
+
 function update_arr_config {
   echo "Updating ${container} configuration..."
-  until [ -f "${CONFIG_ROOT:-.}"/"$container"/config.xml ]; do sleep 1; done
-  sed -i.bak "s/<UrlBase><\/UrlBase>/<UrlBase>\/$1<\/UrlBase>/" "${CONFIG_ROOT:-.}"/"$container"/config.xml && rm "${CONFIG_ROOT:-.}"/"$container"/config.xml.bak
+  local arr_config="${CONFIG_ROOT:-.}"/"$container"/config.xml
+  until [ -f "$arr_config" ]; do sleep 1; done
+  set_xml_config_value "$arr_config" "UrlBase" "/$1"
+  if [[ "$container" == "prowlarr" ]]; then
+    set_xml_config_value "$arr_config" "AuthenticationMethod" "External"
+    set_xml_config_value "$arr_config" "AuthenticationRequired" "DisabledForLocalAddresses"
+  fi
   CONTAINER_NAME_UPPER=$(echo "$container" | tr '[:lower:]' '[:upper:]')
-  sed -i.bak 's/^'"${CONTAINER_NAME_UPPER}"'_API_KEY=.*/'"${CONTAINER_NAME_UPPER}"'_API_KEY='"$(sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' "${CONFIG_ROOT:-.}"/"$container"/config.xml)"'/' .env && rm .env.bak
+  sed -i.bak 's/^'"${CONTAINER_NAME_UPPER}"'_API_KEY=.*/'"${CONTAINER_NAME_UPPER}"'_API_KEY='"$(sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' "$arr_config")"'/' .env && rm .env.bak
   echo "Update of ${container} configuration complete, restarting..."
   docker compose restart "$container"
 }
