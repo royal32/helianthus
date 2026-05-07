@@ -193,7 +193,15 @@ detect_timezone() {
 detect_local_hostname() {
   local detected=""
 
-  if command -v scutil >/dev/null 2>&1; then
+  if [[ -n "${NAS_HOST_HOSTNAME:-}" ]]; then
+    detected="$NAS_HOST_HOSTNAME"
+  fi
+
+  if [[ -z "$detected" && -f /host/etc/hostname ]]; then
+    detected=$(cat /host/etc/hostname 2>/dev/null || true)
+  fi
+
+  if [[ -z "$detected" ]] && command -v scutil >/dev/null 2>&1; then
     detected=$(scutil --get LocalHostName 2>/dev/null || true)
   fi
 

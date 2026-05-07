@@ -7,6 +7,8 @@ services:
       dockerfile: setup/Dockerfile
     container_name: stack-bootstrap
     restart: "no"
+    environment:
+      - NAS_HOST_HOSTNAME=${HOST_HOSTNAME:-${HOSTNAME:-}}
     command: ["/bin/bash", "/stack/scripts/compose-bootstrap.sh"]
     volumes:
       - .:/stack
@@ -22,6 +24,7 @@ services:
       - SETUP_WAIT_TIMEOUT=${SETUP_WAIT_TIMEOUT:-300}
       - USER_ID=${USER_ID}
       - GROUP_ID=${GROUP_ID}
+      - NAS_HOST_HOSTNAME=${HOST_HOSTNAME:-${HOSTNAME:-}}
     volumes:
       - .:/stack
       - /var/run/docker.sock:/var/run/docker.sock
