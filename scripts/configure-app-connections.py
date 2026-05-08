@@ -1362,8 +1362,8 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
         settings_path.write_text(json.dumps(settings, indent=1) + "\n")
 
     if env_changed:
-        run_compose(["up", "-d", "seerr"])
-        log("Updated Seerr API key in .env and reapplied the Seerr service")
+        run_compose(["restart", "seerr"])
+        log("Updated Seerr API key in .env and restarted Seerr")
     elif settings_changed:
         run_compose(["restart", "seerr"])
         log("Updated Seerr settings and restarted Seerr")

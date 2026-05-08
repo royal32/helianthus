@@ -348,8 +348,6 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "USER_ID" "1000" "$user_id"
   set_if_missing_or_default "$ENV_FILE" "GROUP_ID" "1000" "$group_id"
   set_if_missing_or_default "$ENV_FILE" "TIMEZONE" "America/New_York" "$(detect_timezone)"
-  set_if_missing_or_default "$ENV_FILE" "HOSTNAME" "localhost" "$local_hostname"
-  set_if_missing_or_default "$ENV_FILE" "PUBLIC_HOSTNAME" "localhost" "$local_hostname"
   set_if_missing_or_default "$ENV_FILE" "PUBLIC_SCHEME" "" "http"
   set_if_missing_or_default "$ENV_FILE" "BASE_HOSTNAME" "localhost" "\${PUBLIC_HOSTNAME}"
   set_if_missing_or_default "$ENV_FILE" "CONFIG_ROOT" "." "./runtime"
