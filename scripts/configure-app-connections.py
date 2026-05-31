@@ -33,6 +33,7 @@ class ArrService:
     display_name: str
     url_base: str
     api_key_env: str
+    hostname_env: str
     root_folder_env: str
     category_env: str
     download_path_env: str
@@ -46,41 +47,44 @@ ARR_SERVICES: tuple[ArrService, ...] = (
     ArrService(
         service_name="sonarr",
         display_name="Sonarr",
-        url_base="/sonarr",
+        url_base="",
         api_key_env="SONARR_API_KEY",
+        hostname_env="SONARR_HOSTNAME",
         root_folder_env="SONARR_ROOT_FOLDER",
         category_env="SONARR_QBIT_CATEGORY",
         download_path_env="SONARR_DOWNLOAD_PATH",
         qbit_implementation_field="tvCategory",
         qbit_directory_field=None,
         prowlarr_implementation="Sonarr",
-        internal_base_url="http://sonarr:8989/sonarr",
+        internal_base_url="http://sonarr:8989",
     ),
     ArrService(
         service_name="radarr",
         display_name="Radarr",
-        url_base="/radarr",
+        url_base="",
         api_key_env="RADARR_API_KEY",
+        hostname_env="RADARR_HOSTNAME",
         root_folder_env="RADARR_ROOT_FOLDER",
         category_env="RADARR_QBIT_CATEGORY",
         download_path_env="RADARR_DOWNLOAD_PATH",
         qbit_implementation_field="movieCategory",
         qbit_directory_field=None,
         prowlarr_implementation="Radarr",
-        internal_base_url="http://radarr:7878/radarr",
+        internal_base_url="http://radarr:7878",
     ),
     ArrService(
         service_name="lidarr",
         display_name="Lidarr",
-        url_base="/lidarr",
+        url_base="",
         api_key_env="LIDARR_API_KEY",
+        hostname_env="LIDARR_HOSTNAME",
         root_folder_env="LIDARR_ROOT_FOLDER",
         category_env="LIDARR_QBIT_CATEGORY",
         download_path_env="LIDARR_DOWNLOAD_PATH",
         qbit_implementation_field="category",
         qbit_directory_field="directory",
         prowlarr_implementation="Lidarr",
-        internal_base_url="http://lidarr:8686/lidarr",
+        internal_base_url="http://lidarr:8686",
     ),
 )
 
@@ -307,11 +311,11 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Sonarr",
             "icon": "sonarr.png",
-            "href": "/sonarr",
+            "href": build_external_url(env, "", env.get("SONARR_HOSTNAME", "")) or "/",
             "description": "Series management",
             "widget": {
                 "type": "sonarr",
-                "url": "http://sonarr:8989/sonarr",
+                "url": "http://sonarr:8989",
                 "key": env.get("SONARR_API_KEY", ""),
             },
         },
@@ -320,11 +324,11 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Radarr",
             "icon": "radarr.png",
-            "href": "/radarr",
+            "href": build_external_url(env, "", env.get("RADARR_HOSTNAME", "")) or "/",
             "description": "Movies management",
             "widget": {
                 "type": "radarr",
-                "url": "http://radarr:7878/radarr",
+                "url": "http://radarr:7878",
                 "key": env.get("RADARR_API_KEY", ""),
             },
         },
@@ -346,11 +350,11 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Jellyfin",
             "icon": "jellyfin.png",
-            "href": "/jellyfin",
+            "href": build_external_url(env, "", env.get("JELLYFIN_HOSTNAME", "")) or "/",
             "description": "Media server",
             "widget": {
                 "type": "jellyfin",
-                "url": "http://jellyfin:8096/jellyfin",
+                "url": "http://jellyfin:8096",
                 "key": env.get("JELLYFIN_API_KEY", ""),
             },
         },
@@ -359,11 +363,11 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Download",
             "name": "Prowlarr",
             "icon": "prowlarr.png",
-            "href": "/prowlarr",
+            "href": build_external_url(env, "", env.get("PROWLARR_HOSTNAME", "")) or "/",
             "description": "Indexer management",
             "widget": {
                 "type": "prowlarr",
-                "url": "http://prowlarr:9696/prowlarr",
+                "url": "http://prowlarr:9696",
                 "key": env.get("PROWLARR_API_KEY", ""),
             },
         },
@@ -372,7 +376,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Download",
             "name": "qBittorrent",
             "icon": "qbittorrent.png",
-            "href": "/qbittorrent",
+            "href": build_external_url(env, "", env.get("QBITTORRENT_HOSTNAME", "")) or "/",
             "description": "BitTorrent client",
             "widget": {
                 "type": "qbittorrent",
@@ -723,7 +727,7 @@ class ProwlarrApi:
     def __init__(self, api_key: str) -> None:
         self.client = ContainerJsonClient(
             "prowlarr",
-            "http://127.0.0.1:9696/prowlarr",
+            "http://127.0.0.1:9696",
             default_headers={"X-Api-Key": api_key},
         )
 
@@ -751,7 +755,7 @@ class ProwlarrApi:
 
 class JellyfinApi(ContainerJsonClient):
     def __init__(self) -> None:
-        super().__init__("jellyfin", "http://127.0.0.1:8096/jellyfin")
+        super().__init__("jellyfin", "http://127.0.0.1:8096")
 
     @classmethod
     def authenticated(cls, access_token: str) -> "JellyfinApi":
@@ -866,7 +870,7 @@ class SeerrApi(ContainerJsonClient):
             "password": env["SEERR_JELLYFIN_ADMIN_PASSWORD"],
             "hostname": "jellyfin",
             "port": 8096,
-            "urlBase": "/jellyfin",
+            "urlBase": "",
             "useSsl": False,
             "email": env.get("SEERR_JELLYFIN_ADMIN_EMAIL", "") or env["SEERR_JELLYFIN_ADMIN_USERNAME"],
             "serverType": SEERR_MEDIA_SERVER_TYPE_JELLYFIN,
@@ -983,7 +987,7 @@ def build_seerr_radarr_settings(arr_api: ArrApi, env: dict[str, str]) -> dict[st
         "tags": [],
         "is4k": False,
         "isDefault": True,
-        "externalUrl": build_external_url(env, arr_api.service.url_base),
+        "externalUrl": build_external_url(env, "", env.get(arr_api.service.hostname_env, "")),
         "syncEnabled": env_bool(env, "SEERR_SYNC_ENABLED", True),
         "preventSearch": not env_bool(env, "SEERR_AUTO_SEARCH", True),
         "tagRequests": False,
@@ -1011,7 +1015,7 @@ def build_seerr_sonarr_settings(arr_api: ArrApi, env: dict[str, str]) -> dict[st
         "tags": [],
         "is4k": False,
         "isDefault": True,
-        "externalUrl": build_external_url(env, arr_api.service.url_base),
+        "externalUrl": build_external_url(env, "", env.get(arr_api.service.hostname_env, "")),
         "syncEnabled": env_bool(env, "SEERR_SYNC_ENABLED", True),
         "preventSearch": not env_bool(env, "SEERR_AUTO_SEARCH", True),
         "tagRequests": False,
@@ -1307,14 +1311,18 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
 
     if "jellyfin" in running_services:
         jellyfin_public_info = JellyfinApi().get_public_info()
-        jellyfin_external_url = env.get("SEERR_JELLYFIN_EXTERNAL_URL", "") or build_external_url(env, "/jellyfin")
+        jellyfin_external_url = env.get("SEERR_JELLYFIN_EXTERNAL_URL", "") or build_external_url(
+            env,
+            "",
+            env.get("JELLYFIN_HOSTNAME", ""),
+        )
         jellyfin_settings = settings.setdefault("jellyfin", {})
         desired_jellyfin = {
             "name": jellyfin_public_info.get("ServerName", jellyfin_settings.get("name", "")),
             "ip": "jellyfin",
             "port": 8096,
             "useSsl": False,
-            "urlBase": "/jellyfin",
+            "urlBase": "",
             "externalHostname": jellyfin_external_url,
             "serverId": jellyfin_public_info.get("Id", jellyfin_settings.get("serverId", "")),
         }
@@ -1552,7 +1560,7 @@ def ensure_prowlarr_application(
         "fields": apply_field_overrides(
             schema["fields"],
             {
-                "prowlarrUrl": "http://prowlarr:9696/prowlarr",
+                "prowlarrUrl": "http://prowlarr:9696",
                 "baseUrl": arr_service.internal_base_url,
                 "apiKey": env[arr_service.api_key_env],
             },

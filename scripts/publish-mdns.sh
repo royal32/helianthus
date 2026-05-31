@@ -6,6 +6,12 @@ log() {
   printf '[mdns] %s\n' "$1"
 }
 
+mdns_enabled="${MDNS_ENABLED:-true}"
+if [[ "$mdns_enabled" =~ ^([Ff][Aa][Ll][Ss][Ee]|0|[Nn][Oo])$ ]]; then
+  log "mDNS alias publishing is disabled"
+  sleep infinity
+fi
+
 detect_name() {
   local name="${LOCAL_MDNS_HOSTNAME:-}"
 
@@ -87,14 +93,28 @@ rm -f /run/dbus/pid /run/dbus/dbus.pid
 dbus-daemon --system --fork
 avahi-daemon --no-chroot --daemonize
 
-log "Advertising ${names[*]} at ${ip}"
+declare -A address_pids
+declare -A service_pids
+
+log "Publishing ${names[*]} at ${ip}"
 while true; do
   for name in "${names[@]}"; do
-    if avahi-resolve-host-name "$name" >/dev/null 2>&1; then
-      log "${name} is already advertised on this network"
+    pid="${address_pids[$name]:-}"
+    if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+      :
     else
-      avahi-publish -a -R "$name" "$ip" &
+      avahi-publish -a -R "$name" "$ip" >/dev/null 2>&1 &
+      address_pids[$name]=$!
+      log "Advertising address ${name} at ${ip}"
     fi
+
+    pid="${service_pids[$name]:-}"
+    if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+      continue
+    fi
+    avahi-publish -s -H "$name" "$name" _http._tcp 80 "path=/" >/dev/null 2>&1 &
+    service_pids[$name]=$!
+    log "Advertising HTTP service ${name} at ${name}:80"
   done
   sleep 60
 done

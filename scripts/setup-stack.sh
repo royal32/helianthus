@@ -348,10 +348,21 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "USER_ID" "1000" "$user_id"
   set_if_missing_or_default "$ENV_FILE" "GROUP_ID" "1000" "$group_id"
   set_if_missing_or_default "$ENV_FILE" "TIMEZONE" "America/New_York" "$(detect_timezone)"
+  set_if_missing_or_default "$ENV_FILE" "PUBLIC_HOSTNAME" "localhost" "media.local"
   set_if_missing_or_default "$ENV_FILE" "PUBLIC_SCHEME" "" "http"
   set_if_missing_or_default "$ENV_FILE" "BASE_HOSTNAME" "localhost" "\${PUBLIC_HOSTNAME}"
   set_if_missing_or_default "$ENV_FILE" "CONFIG_ROOT" "." "./runtime"
   set_if_missing_or_default "$ENV_FILE" "FORCE_HTTPS" "" "false"
+  set_if_missing_or_default "$ENV_FILE" "MDNS_ENABLED" "" "true"
+  set_if_missing_or_default "$ENV_FILE" "HOMEPAGE_HOSTNAME" "" "\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "HOMEPAGE_ALIAS_HOSTNAME" "" "homepage.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "SONARR_HOSTNAME" "" "sonarr.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "RADARR_HOSTNAME" "" "radarr.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "PROWLARR_HOSTNAME" "" "prowlarr.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "QBITTORRENT_HOSTNAME" "" "qbittorrent.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "JELLYFIN_HOSTNAME" "" "jellyfin.\${PUBLIC_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "SEERR_HOSTNAME" "seerr.\${BASE_HOSTNAME}" "seerr.\${PUBLIC_HOSTNAME}"
+  set_env_value "$ENV_FILE" "GENERATED_MDNS_ALIASES" "\${HOMEPAGE_HOSTNAME},\${HOMEPAGE_ALIAS_HOSTNAME},\${SONARR_HOSTNAME},\${RADARR_HOSTNAME},\${PROWLARR_HOSTNAME},\${QBITTORRENT_HOSTNAME},\${JELLYFIN_HOSTNAME},\${SEERR_HOSTNAME}"
 
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then
@@ -457,7 +468,7 @@ ensure_local_tls_certificate() {
   dynamic_file="$dynamic_dir/local-tls.yml"
   host_name=$(resolve_env_references "$(get_env_value "$ENV_FILE" "PUBLIC_HOSTNAME" || true)")
   extra_hosts=$(resolve_env_references "$(get_env_value "$ENV_FILE" "LOCAL_TLS_HOSTS" || true)")
-  seerr_host=$(resolve_env_references "$(get_env_value "$ENV_FILE" "SEERR_HOSTNAME" || true)")
+  generated_aliases=$(resolve_env_references "$(get_env_value "$ENV_FILE" "GENERATED_MDNS_ALIASES" || true)")
   mdns_aliases=$(resolve_env_references "$(get_env_value "$ENV_FILE" "MDNS_ALIASES" || true)")
   force_https=$(get_env_value "$ENV_FILE" "FORCE_HTTPS" || printf 'true')
 
@@ -471,13 +482,8 @@ ensure_local_tls_certificate() {
     index=$((index + 1))
   fi
 
-  if [[ -n "$seerr_host" && "$seerr_host" != "localhost" && "$seerr_host" != *'${'* ]]; then
-    san_entries+=("DNS.${index} = ${seerr_host}")
-    index=$((index + 1))
-  fi
-
-  if [[ -n "$extra_hosts" || -n "$mdns_aliases" ]]; then
-    IFS=',' read -r -a extra_hosts_array <<< "${extra_hosts},${mdns_aliases}"
+  if [[ -n "$extra_hosts" || -n "$generated_aliases" || -n "$mdns_aliases" ]]; then
+    IFS=',' read -r -a extra_hosts_array <<< "${extra_hosts},${generated_aliases},${mdns_aliases}"
     for host in "${extra_hosts_array[@]}"; do
       host=$(printf '%s' "$host" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
       [[ -n "$host" ]] || continue
@@ -507,8 +513,15 @@ ensure_local_tls_certificate() {
     cert_needs_regen=1
   elif [[ -n "$host_name" && "$host_name" != "localhost" ]] && ! openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null | grep -F "DNS:${host_name}" >/dev/null; then
     cert_needs_regen=1
-  elif [[ -n "$seerr_host" && "$seerr_host" != "localhost" && "$seerr_host" != *'${'* ]] && ! openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null | grep -F "DNS:${seerr_host}" >/dev/null; then
-    cert_needs_regen=1
+  else
+    for entry in "${san_entries[@]}"; do
+      host="${entry#*= }"
+      [[ -n "$host" && "$host" != "localhost" && "$host" != "*.local" ]] || continue
+      if ! openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null | grep -F "DNS:${host}" >/dev/null; then
+        cert_needs_regen=1
+        break
+      fi
+    done
   fi
 
   if (( cert_needs_regen == 1 )); then

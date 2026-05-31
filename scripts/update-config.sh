@@ -212,7 +212,7 @@ function update_arr_config {
   echo "Updating ${container} configuration..."
   local arr_config="${CONFIG_ROOT:-.}"/"$container"/config.xml
   until [ -f "$arr_config" ]; do sleep 1; done
-  set_xml_config_value "$arr_config" "UrlBase" "/$1"
+  set_xml_config_value "$arr_config" "UrlBase" ""
   if [[ "$container" =~ ^(sonarr|radarr|prowlarr)$ ]]; then
     set_xml_config_value "$arr_config" "AuthenticationMethod" "Forms"
     set_xml_config_value "$arr_config" "AuthenticationRequired" "DisabledForLocalAddresses"
@@ -267,14 +267,14 @@ function update_bazarr_config {
     SONARR_API_KEY=$(sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' "${CONFIG_ROOT:-.}"/sonarr/config.xml)
     sed -i.bak \
       -e "/sonarr:/,/^radarr:/ s|apikey: .*|apikey: $SONARR_API_KEY|" \
-      -e "/sonarr:/,/^radarr:/ s|base_url: .*|base_url: '/sonarr'|" \
+      -e "/sonarr:/,/^radarr:/ s|base_url: .*|base_url: ''|" \
       -e "/sonarr:/,/^radarr:/ s|ip: .*|ip: sonarr|" \
       "$bazarr_config" && rm "$bazarr_config".bak
     until [ -f "${CONFIG_ROOT:-.}"/radarr/config.xml ]; do sleep 1; done
     RADARR_API_KEY=$(sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' "${CONFIG_ROOT:-.}"/radarr/config.xml)
     sed -i.bak \
       -e "/radarr:/,/^sonarr:/ s|apikey: .*|apikey: $RADARR_API_KEY|" \
-      -e "/radarr:/,/^sonarr:/ s|base_url: .*|base_url: '/radarr'|" \
+      -e "/radarr:/,/^sonarr:/ s|base_url: .*|base_url: ''|" \
       -e "/radarr:/,/^sonarr:/ s|ip: .*|ip: radarr|" \
       "$bazarr_config" && rm "$bazarr_config".bak
     sed -i.bak 's/^BAZARR_API_KEY=.*/BAZARR_API_KEY='"$(sed -n 's/.*apikey: \(.*\)*/\1/p' "$bazarr_config" | head -n 1)"'/' .env && rm .env.bak
@@ -287,7 +287,7 @@ function update_jellyfin_config {
     echo "Updating ${container} configuration..."
     local jellyfin_network="${CONFIG_ROOT:-.}"/"$container"/network.xml
     until [ -f "$jellyfin_network" ]; do sleep 1; done
-    set_xml_config_value_in_root "$jellyfin_network" "BaseUrl" "/jellyfin" "NetworkConfiguration"
+    set_xml_config_value_in_root "$jellyfin_network" "BaseUrl" "" "NetworkConfiguration"
     clean_appledouble_files "${CONFIG_ROOT:-.}/$container"
     echo "Update of ${container} configuration complete, restarting..."
     docker compose restart "$container"
