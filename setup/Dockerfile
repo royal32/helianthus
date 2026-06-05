@@ -1,6 +1,6 @@
 FROM python:3.13-alpine
 
-RUN apk add --no-cache avahi avahi-tools bash curl dbus docker-cli docker-cli-compose iproute2 openssl
+RUN apk add --no-cache bash curl docker-cli docker-cli-compose iproute2
 
 WORKDIR /stack
 

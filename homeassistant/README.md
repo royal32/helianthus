@@ -8,11 +8,12 @@ Enable Home Assistant by setting `COMPOSE_PROFILES=homeassistant`.
 
 The automated path is `./scripts/setup-stack.sh --profiles homeassistant`.
 
-Set the `HOMEASSISTANT_HOSTNAME`, since it does not support
+Home Assistant is available at `https://homeassistant.${TAILNET_DOMAIN}` through
+TSDProxy. It runs at the root path because it does not support
 [running in a subfolder](https://github.com/home-assistant/architecture/issues/156).
-Add the necessary DNS records in your domain.
 
-You will need to allow Traefik to access Home Assistant by adding the following in `homeassistant/configuration.yaml`:
+Allow the shared Docker network proxy to access Home Assistant by adding the
+following in `homeassistant/configuration.yaml`:
 
 ```yaml
 http:

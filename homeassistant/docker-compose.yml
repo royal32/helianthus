@@ -18,20 +18,10 @@ services:
       retries: 10
     privileged: true
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.homeassistant.rule=(Host(`${HOMEASSISTANT_HOSTNAME}`))
-      - traefik.http.routers.homeassistant.tls=true
-      - traefik.http.routers.homeassistant.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.homeassistant.loadbalancer.server.port=8123
-      - homepage.group=Apps
-      - homepage.name=Home Assistant
-      - homepage.icon=home-assistant.png
-      - homepage.href=https://${HOMEASSISTANT_HOSTNAME}
-      - homepage.description=Open source home automation that puts local control and privacy first
-      - homepage.weight=3
-      - homepage.widget.type=homeassistant
-      - homepage.widget.url=https://${HOMEASSISTANT_HOSTNAME}
-      - homepage.widget.key=${HOMEASSISTANT_ACCESS_TOKEN}
+      - tsdproxy.enable=true
+      - tsdproxy.name=homeassistant
+      - tsdproxy.port.1=443/https:8123/http, no_autodetect
+      - tsdproxy.dash.label=Home Assistant
     profiles:
       - homeassistant
   mosquitto:

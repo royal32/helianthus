@@ -8,14 +8,12 @@ services:
     container_name: stack-bootstrap
     restart: "no"
     environment:
-      - NAS_HOST_HOSTNAME=${HOST_HOSTNAME:-}
       - USER_ID=${USER_ID}
       - GROUP_ID=${GROUP_ID}
     command: ["/bin/bash", "/stack/scripts/compose-bootstrap.sh"]
     volumes:
       - .:/stack
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/hostname:/host/etc/hostname:ro
 
   stack-setup:
     build:
@@ -27,15 +25,13 @@ services:
       - SETUP_WAIT_TIMEOUT=${SETUP_WAIT_TIMEOUT:-300}
       - USER_ID=${USER_ID}
       - GROUP_ID=${GROUP_ID}
-      - NAS_HOST_HOSTNAME=${HOST_HOSTNAME:-}
     volumes:
       - .:/stack
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/hostname:/host/etc/hostname:ro
     depends_on:
       stack-bootstrap:
         condition: service_completed_successfully
-      traefik:
+      tsdproxy:
         condition: service_started
       sonarr:
         condition: service_started
@@ -52,64 +48,21 @@ services:
       homepage:
         condition: service_started
 
-  mdns-publisher:
-    build:
-      context: .
-      dockerfile: setup/Dockerfile
-    container_name: mdns-publisher
+  tsdproxy:
+    image: almeidapaulopt/tsdproxy:2.3.3
+    container_name: tsdproxy
     restart: unless-stopped
-    network_mode: host
-    environment:
-      - MDNS_ENABLED=${MDNS_ENABLED:-true}
-      - LOCAL_MDNS_HOSTNAME=
-      - LOCAL_MDNS_HOSTS=${GENERATED_MDNS_ALIASES:-},${MDNS_ALIASES:-}
-      - MDNS_ADVERTISE_IP=${MDNS_ADVERTISE_IP:-}
-    volumes:
-      - .:/stack:ro
-      - /etc/hostname:/host/etc/hostname:ro
-    command: ["/bin/bash", "/stack/scripts/publish-mdns.sh"]
-
-  traefik:
-    image: ghcr.io/traefik/traefik:3.6
-    container_name: traefik
-    restart: always
-    environment:
-      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
-      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
-      - CLOUDFLARE_ZONE_API_TOKEN=${CLOUDFLARE_ZONE_API_TOKEN}
-      - LETS_ENCRYPT_EMAIL=${LETS_ENCRYPT_EMAIL}
-    command:
-      - --ping=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.web-secure.address=:443
-      - --certificatesresolvers.myresolver.acme.dnschallenge=${DNS_CHALLENGE:-true}
-      - --certificatesresolvers.myresolver.acme.dnschallenge.provider=${DNS_CHALLENGE_PROVIDER:-cloudflare}
-      - --certificatesresolvers.myresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
-      - --certificatesresolvers.myresolver.acme.caserver=${LETS_ENCRYPT_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
-      - --certificatesresolvers.myresolver.acme.email=${LETS_ENCRYPT_EMAIL}
-      - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
-      - --providers.file.filename=/traefik-dynamic/local-tls.yml
-      - --providers.file.watch=true
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:${TSDPROXY_DASHBOARD_PORT:-8080}:8080"
     volumes:
-      - ${CONFIG_ROOT:-.}/letsencrypt:/letsencrypt
-      - ${CONFIG_ROOT:-.}/traefik/dynamic:/traefik-dynamic:ro
-      - ${CONFIG_ROOT:-.}/traefik/certs:/traefik-certs:ro
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./tsdproxy/tsdproxy.yaml:/config/tsdproxy.yaml:ro
+      - ./tsdproxy/dashboard.json:/config/dashboard.json:ro
+      - ${CONFIG_ROOT:-.}/tsdproxy/data:/data
     extra_hosts:
-      - host.docker.internal:172.17.0.1
-    depends_on:
-      stack-bootstrap:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      - host.docker.internal:host-gateway
+    secrets:
+      - tsdproxy_authkey
   sonarr:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
@@ -127,24 +80,10 @@ services:
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.sonarr.rule=Host(`${SONARR_HOSTNAME}`)
-      - traefik.http.routers.sonarr.entrypoints=web-secure
-      - traefik.http.routers.sonarr.tls=true
-      - traefik.http.routers.sonarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.sonarr-http.rule=Host(`${SONARR_HOSTNAME}`)
-      - traefik.http.routers.sonarr-http.entrypoints=web
-      - traefik.http.routers.sonarr-http.service=sonarr
-      - traefik.http.services.sonarr.loadbalancer.server.port=8989
-      - homepage.group=Media
-      - homepage.name=Sonarr
-      - homepage.icon=sonarr.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${SONARR_HOSTNAME}
-      - homepage.description=Series management
-      - homepage.weight=0
-      - homepage.widget.type=sonarr
-      - homepage.widget.url=http://sonarr:8989
-      - homepage.widget.key=${SONARR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=sonarr
+      - tsdproxy.port.1=443/https:8989/http
+      - tsdproxy.dash.label=Sonarr
   radarr:
     image: lscr.io/linuxserver/radarr
     container_name: radarr
@@ -162,24 +101,10 @@ services:
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.radarr.rule=Host(`${RADARR_HOSTNAME}`)
-      - traefik.http.routers.radarr.entrypoints=web-secure
-      - traefik.http.routers.radarr.tls=true
-      - traefik.http.routers.radarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.radarr-http.rule=Host(`${RADARR_HOSTNAME}`)
-      - traefik.http.routers.radarr-http.entrypoints=web
-      - traefik.http.routers.radarr-http.service=radarr
-      - traefik.http.services.radarr.loadbalancer.server.port=7878
-      - homepage.group=Media
-      - homepage.name=Radarr
-      - homepage.icon=radarr.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${RADARR_HOSTNAME}
-      - homepage.description=Movies management
-      - homepage.weight=1
-      - homepage.widget.type=radarr
-      - homepage.widget.url=http://radarr:7878
-      - homepage.widget.key=${RADARR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=radarr
+      - tsdproxy.port.1=443/https:7878/http
+      - tsdproxy.dash.label=Radarr
   lidarr:
     image: lscr.io/linuxserver/lidarr
     container_name: lidarr
@@ -192,25 +117,15 @@ services:
       - ${DATA_ROOT}:/data
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8686/lidarr/ping"]
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8686/ping"]
       interval: 10s
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.lidarr.rule=PathPrefix(`/lidarr`)
-      - traefik.http.routers.lidarr.tls=true
-      - traefik.http.routers.lidarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.lidarr.loadbalancer.server.port=8686
-      - homepage.group=Media
-      - homepage.name=Lidarr
-      - homepage.icon=lidarr.png
-      - homepage.href=/lidarr
-      - homepage.description=Music management
-      - homepage.weight=2
-      - homepage.widget.type=lidarr
-      - homepage.widget.url=http://lidarr:8686/lidarr
-      - homepage.widget.key=${LIDARR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=lidarr
+      - tsdproxy.port.1=443/https:8686/http
+      - tsdproxy.dash.label=Lidarr
     profiles:
       - lidarr
   bazarr:
@@ -225,25 +140,15 @@ services:
       - ${DATA_ROOT}:/data
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://127.0.0.1:6767/bazarr/ping"]
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:6767/ping"]
       interval: 10s
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.bazarr.rule=PathPrefix(`/bazarr`)
-      - traefik.http.routers.bazarr.tls=true
-      - traefik.http.routers.bazarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.bazarr.loadbalancer.server.port=6767
-      - homepage.group=Download
-      - homepage.name=Bazarr
-      - homepage.icon=bazarr.png
-      - homepage.href=/bazarr
-      - homepage.description=Subtitles management
-      - homepage.weight=4
-      - homepage.widget.type=bazarr
-      - homepage.widget.url=http://bazarr:6767/bazarr
-      - homepage.widget.key=${BAZARR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=bazarr
+      - tsdproxy.port.1=443/https:6767/http
+      - tsdproxy.dash.label=Bazarr
     profiles:
       - bazarr
   seerr:
@@ -263,24 +168,10 @@ services:
       interval: 10s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.seerr.rule=(Host(`${SEERR_HOSTNAME}`))
-      - traefik.http.routers.seerr.entrypoints=web-secure
-      - traefik.http.routers.seerr.tls=true
-      - traefik.http.routers.seerr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.seerr-http.rule=(Host(`${SEERR_HOSTNAME}`))
-      - traefik.http.routers.seerr-http.entrypoints=web
-      - traefik.http.routers.seerr-http.service=seerr
-      - traefik.http.services.seerr.loadbalancer.server.port=5055
-      - homepage.group=Media
-      - homepage.name=Seerr
-      - homepage.icon=jellyseerr.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${SEERR_HOSTNAME}
-      - homepage.description=Content Recommendations and Request Management
-      - homepage.weight=3
-      - homepage.widget.type=jellyseerr
-      - homepage.widget.url=http://seerr:5055
-      - homepage.widget.key=${SEERR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=seerr
+      - tsdproxy.port.1=443/https:5055/http
+      - tsdproxy.dash.label=Seerr
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -297,48 +188,21 @@ services:
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.prowlarr.rule=Host(`${PROWLARR_HOSTNAME}`)
-      - traefik.http.routers.prowlarr.entrypoints=web-secure
-      - traefik.http.routers.prowlarr.tls=true
-      - traefik.http.routers.prowlarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.prowlarr-http.rule=Host(`${PROWLARR_HOSTNAME}`)
-      - traefik.http.routers.prowlarr-http.entrypoints=web
-      - traefik.http.routers.prowlarr-http.service=prowlarr
-      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
-      - homepage.group=Download
-      - homepage.name=Prowlarr
-      - homepage.icon=prowlarr.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${PROWLARR_HOSTNAME}
-      - homepage.description=Indexers management
-      - homepage.weight=1
-      - homepage.widget.type=prowlarr
-      - homepage.widget.url=http://prowlarr:9696
-      - homepage.widget.key=${PROWLARR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=prowlarr
+      - tsdproxy.port.1=443/https:9696/http
+      - tsdproxy.dash.label=Prowlarr
   suggestarr:
     image: ciuse99/suggestarr:latest
     container_name: suggestarr
-    environment:
-      - SUBPATH=/suggestarr
     volumes:
       - ${CONFIG_ROOT:-.}/suggestarr:/app/config/config_files
     restart: always
     labels:
-    - traefik.enable=true
-    - traefik.http.routers.suggestarr.rule=PathPrefix(`/suggestarr`)
-    - traefik.http.routers.suggestarr.tls=true
-    - traefik.http.routers.suggestarr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-    - traefik.http.services.suggestarr.loadbalancer.server.port=5000
-    - traefik.http.routers.suggestarr.middlewares=suggestarr-strip-slash
-    - traefik.http.middlewares.suggestarr-strip-slash.redirectregex.regex=(^.*\/suggestarr$$)
-    - traefik.http.middlewares.suggestarr-strip-slash.redirectregex.replacement=$$1/
-    - traefik.http.middlewares.suggestarr-strip-slash.redirectregex.permanent=false
-    - homepage.group=Media
-    - homepage.name=Suggestarr
-    - homepage.icon=suggest-arr.png
-    - homepage.href=/suggestarr
-    - homepage.description=Media recommendations
-    - homepage.weight=6
+    - tsdproxy.enable=true
+    - tsdproxy.name=suggestarr
+    - tsdproxy.port.1=443/https:5000/http
+    - tsdproxy.dash.label=Suggestarr
     profiles:
       - suggestarr
   flaresolverr:
@@ -351,10 +215,10 @@ services:
       - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
       - TZ=${TIMEZONE}
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.flaresolverr.rule=PathPrefix(`/flaresolverr`)
-      - traefik.http.routers.flaresolverr.tls=true
-      - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
+      - tsdproxy.enable=true
+      - tsdproxy.name=flaresolverr
+      - tsdproxy.port.1=443/https:8191/http
+      - tsdproxy.dash.label=FlareSolverr
     profiles:
       - flaresolverr
   autobrr:
@@ -363,28 +227,14 @@ services:
     restart: always
     environment:
       - TZ=${TIMEZONE}
-      - AUTOBRR__BASE_URL=/autobrr/
     user: ${USER_ID}:${GROUP_ID}
     volumes:
       - ${CONFIG_ROOT:-.}/autobrr:/config
     labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.autobrr-strip.stripprefix.prefixes=/autobrr
-      - traefik.http.middlewares.autobrr-strip.stripprefix.forceSlash=true
-      - traefik.http.routers.autobrr.rule=PathPrefix(`/autobrr`)
-      - traefik.http.routers.autobrr.tls=true
-      - traefik.http.routers.autobrr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.autobrr.loadbalancer.server.port=7474
-      - traefik.http.routers.autobrr.middlewares=autobrr-strip
-      - homepage.group=Download
-      - homepage.name=Autobrr
-      - homepage.icon=autobrr.png
-      - homepage.href=/autobrr
-      - homepage.description=Torrent download automation
-      - homepage.weight=7
-      - homepage.widget.type=autobrr
-      - homepage.widget.url=http://autobrr:7474
-      - homepage.widget.key=${AUTOBRR_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=autobrr
+      - tsdproxy.port.1=443/https:7474/http
+      - tsdproxy.dash.label=Autobrr
     profiles:
       - autobrr
   qbittorrent:
@@ -414,16 +264,6 @@ services:
         condition: service_healthy
     labels:
       - com.centurylinklabs.watchtower.depends-on=vpn
-      - homepage.group=Download
-      - homepage.name=qBittorrent
-      - homepage.icon=qbittorrent.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${QBITTORRENT_HOSTNAME}
-      - homepage.description=Bittorrent client
-      - homepage.weight=2
-      - homepage.widget.type=qbittorrent
-      - homepage.widget.url=http://vpn:8080
-      - homepage.widget.username=${QBITTORRENT_USERNAME:-${ADMIN_USERNAME:-admin}}
-      - homepage.widget.password=${QBITTORRENT_PASSWORD:-${GLOBAL_PASSWORD:-adminadmin}}
   vpn:
     image: ghcr.io/thrnz/docker-wireguard-pia:latest
     container_name: vpn
@@ -452,19 +292,11 @@ services:
       - net.ipv6.conf.lo.disable_ipv6=1
     restart: always
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.qbittorrent.rule=Host(`${QBITTORRENT_HOSTNAME}`)
-      - traefik.http.routers.qbittorrent.entrypoints=web-secure
-      - traefik.http.routers.qbittorrent.tls=true
-      - traefik.http.routers.qbittorrent.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.qbittorrent-http.rule=Host(`${QBITTORRENT_HOSTNAME}`)
-      - traefik.http.routers.qbittorrent-http.entrypoints=web
-      - traefik.http.routers.qbittorrent-http.service=qbittorrent
-      - traefik.http.routers.qbittorrent-http.middlewares=qbittorrent-drop-encoding
-      - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
-      - traefik.http.routers.qbittorrent.middlewares=qbittorrent-drop-encoding
       # https://github.com/VueTorrent/VueTorrent/issues/2718#issuecomment-4189837679
-      - traefik.http.middlewares.qbittorrent-drop-encoding.headers.customrequestheaders.Accept-Encoding=
+      - tsdproxy.enable=true
+      - tsdproxy.name=qbittorrent
+      - tsdproxy.port.1=443/https:8080/http
+      - tsdproxy.dash.label=qBittorrent
   cross-seed:
     image: ghcr.io/cross-seed/cross-seed:latest
     container_name: cross-seed
@@ -503,7 +335,7 @@ services:
     container_name: cleanuparr
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11011/cleanuparr/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:11011/health"]
       interval: 1m
       timeout: 10s
       start_period: 30s
@@ -517,19 +349,11 @@ services:
       - TZ=${TIMEZONE}
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
-      - BASE_PATH=/cleanuparr
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.cleanuparr.rule=PathPrefix(`/cleanuparr`)
-      - traefik.http.routers.cleanuparr.tls=true
-      - traefik.http.routers.cleanuparr.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.cleanuparr.loadbalancer.server.port=11011
-      - homepage.group=Download
-      - homepage.name=Cleanuparr
-      - homepage.icon=cleanuperr.png
-      - homepage.href=/cleanuparr
-      - homepage.description=Cleanuparr
-      - homepage.weight=5
+      - tsdproxy.enable=true
+      - tsdproxy.name=cleanuparr
+      - tsdproxy.port.1=443/https:11011/http
+      - tsdproxy.dash.label=Cleanuparr
     profiles:
       - cleanuparr
   sabnzbd:
@@ -544,20 +368,10 @@ services:
       - ${DATA_ROOT}:/data
     restart: always
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.sabnzbd.rule=PathPrefix(`/sabnzbd`)
-      - traefik.http.routers.sabnzbd.tls=true
-      - traefik.http.routers.sabnzbd.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.sabnzbd.loadbalancer.server.port=8080
-      - homepage.group=Download
-      - homepage.name=Sabnzbd
-      - homepage.icon=sabnzbd.png
-      - homepage.href=/sabnzbd
-      - homepage.description=Usenet
-      - homepage.weight=3
-      - homepage.widget.type=sabnzbd
-      - homepage.widget.url=http://sabnzbd:8080/sabnzbd
-      - homepage.widget.key=${SABNZBD_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=sabnzbd
+      - tsdproxy.port.1=443/https:8080/http
+      - tsdproxy.dash.label=SABnzbd
     profiles:
       - sabnzbd
   jellyfin:
@@ -567,12 +381,11 @@ services:
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
       - TZ=${TIMEZONE}
-      - JELLYFIN_PublishedServerUrl=${PUBLIC_SCHEME:-http}://${JELLYFIN_HOSTNAME}
+      - JELLYFIN_PublishedServerUrl=https://jellyfin.${TAILNET_DOMAIN}
     volumes:
       - ${CONFIG_ROOT:-.}/jellyfin:/config
       - ${DATA_ROOT}:/data
     ports:
-      - "8096:8096"
       - "7359:7359/udp"
       - "1900:1900/udp"
     restart: always
@@ -582,24 +395,10 @@ services:
       timeout: 5s
       retries: 30
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.jellyfin.rule=Host(`${JELLYFIN_HOSTNAME}`)
-      - traefik.http.routers.jellyfin.entrypoints=web-secure
-      - traefik.http.routers.jellyfin.tls=true
-      - traefik.http.routers.jellyfin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.jellyfin-http.rule=Host(`${JELLYFIN_HOSTNAME}`)
-      - traefik.http.routers.jellyfin-http.entrypoints=web
-      - traefik.http.routers.jellyfin-http.service=jellyfin
-      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
-      - homepage.group=Media
-      - homepage.name=Jellyfin
-      - homepage.icon=jellyfin.png
-      - homepage.href=${PUBLIC_SCHEME:-http}://${JELLYFIN_HOSTNAME}
-      - homepage.description=Media server
-      - homepage.weight=4
-      - homepage.widget.type=jellyfin
-      - homepage.widget.url=http://jellyfin:8096
-      - homepage.widget.key=${JELLYFIN_API_KEY}
+      - tsdproxy.enable=true
+      - tsdproxy.name=jellyfin
+      - tsdproxy.port.1=443/https:8096/http
+      - tsdproxy.dash.label=Jellyfin
   calibre-web:
     image: lscr.io/linuxserver/calibre-web:latest
     container_name: calibre-web
@@ -614,25 +413,10 @@ services:
       - ${DATA_ROOT}/books:/books
     restart: unless-stopped
     labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.calibre-headers.headers.customRequestHeaders.X-Scheme=https
-      - traefik.http.middlewares.calibre-headers.headers.customRequestHeaders.X-Script-Name=/calibre
-      - traefik.http.middlewares.calibre-stripprefixregex.stripPrefixRegex.regex=/calibre
-      - traefik.http.routers.calibre.middlewares=calibre-headers,calibre-stripprefixregex
-      - traefik.http.routers.calibre.rule=PathPrefix(`/calibre`)
-      - traefik.http.routers.calibre.tls=true
-      - traefik.http.routers.calibre.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.calibre.loadbalancer.server.port=8083
-      - homepage.group=Media
-      - homepage.name=Calibre-Web
-      - homepage.icon=calibre-web.png
-      - homepage.href=/calibre
-      - homepage.description=Books management
-      - homepage.weight=5
-      - homepage.widget.type=calibreweb
-      - homepage.widget.url=http://calibre-web:8083
-      - homepage.widget.username=${CALIBRE_USERNAME:-${ADMIN_USERNAME:-admin}}
-      - homepage.widget.password=${CALIBRE_PASSWORD:-${GLOBAL_PASSWORD:-adminadmin}}
+      - tsdproxy.enable=true
+      - tsdproxy.name=calibre
+      - tsdproxy.port.1=443/https:8083/http
+      - tsdproxy.dash.label=Calibre-Web
     profiles:
       - calibre-web
   homepage:
@@ -652,36 +436,14 @@ services:
       - ${CONFIG_ROOT:-.}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${DATA_ROOT}:/data
-    ports:
-      - "3000:3000"
     restart: always
     command:
       [sh, -c, "if [ -d /app/config/tpl ]; then cp -f /app/config/tpl/*.yaml /app/config/ 2>/dev/null || true; fi; node server.js"]
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.homepage.rule=Host(`${HOMEPAGE_HOSTNAME}`) || Host(`${HOMEPAGE_ALIAS_HOSTNAME}`)
-      - traefik.http.routers.homepage.entrypoints=web-secure
-      - traefik.http.routers.homepage.tls=true
-      - traefik.http.routers.homepage.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.homepage-alias.rule=(Host(`${HOMEPAGE_HOSTNAME}`) || Host(`${HOMEPAGE_ALIAS_HOSTNAME}`)) && (Path(`/homepage`) || Path(`/homepage/`))
-      - traefik.http.routers.homepage-alias.entrypoints=web-secure
-      - traefik.http.routers.homepage-alias.tls=true
-      - traefik.http.routers.homepage-alias.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.homepage-alias.priority=1000
-      - traefik.http.routers.homepage-alias.middlewares=homepage-alias-redirect
-      - traefik.http.routers.homepage-alias.service=homepage
-      - traefik.http.routers.homepage-http.rule=Host(`${HOMEPAGE_HOSTNAME}`) || Host(`${HOMEPAGE_ALIAS_HOSTNAME}`)
-      - traefik.http.routers.homepage-http.entrypoints=web
-      - traefik.http.routers.homepage-http.service=homepage
-      - traefik.http.routers.homepage-alias-http.rule=(Host(`${HOMEPAGE_HOSTNAME}`) || Host(`${HOMEPAGE_ALIAS_HOSTNAME}`)) && (Path(`/homepage`) || Path(`/homepage/`))
-      - traefik.http.routers.homepage-alias-http.entrypoints=web
-      - traefik.http.routers.homepage-alias-http.priority=1000
-      - traefik.http.routers.homepage-alias-http.middlewares=homepage-alias-redirect
-      - traefik.http.routers.homepage-alias-http.service=homepage
-      - traefik.http.middlewares.homepage-alias-redirect.redirectregex.regex=^(.+)/homepage/?$$
-      - traefik.http.middlewares.homepage-alias-redirect.redirectregex.replacement=$$1/
-      - traefik.http.middlewares.homepage-alias-redirect.redirectregex.permanent=false
-      - traefik.http.services.homepage.loadbalancer.server.port=3000
+      - tsdproxy.enable=true
+      - tsdproxy.name=homepage
+      - tsdproxy.port.1=443/https:3000/http
+      - tsdproxy.dash.label=Homepage
   watchtower:
     image: ghcr.io/nicholas-fedor/watchtower:latest
     container_name: watchtower
@@ -708,3 +470,7 @@ services:
 networks:
   default:
     name: docker-compose-nas
+
+secrets:
+  tsdproxy_authkey:
+    file: ${TSDPROXY_AUTHKEY_PATH:-./secrets/tsdproxy_authkey}

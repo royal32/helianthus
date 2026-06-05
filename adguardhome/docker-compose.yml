@@ -42,43 +42,11 @@ services:
     volumes:
       - ./adguardhome/work:/opt/adguardhome/work
       - ./adguardhome/conf:/opt/adguardhome/conf
-      - ./adguardhome/certs:/opt/adguardhome/certs
     labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=docker-compose-nas"
-      - "traefik.http.services.adguardhome.loadbalancer.server.port=3000"
-      - "traefik.http.routers.adguardhome.rule=(Host(`${ADGUARD_HOSTNAME}`))"
-      - "traefik.http.routers.adguardhome.tls=true"
-      - "traefik.http.routers.adguardhome.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}"
-      - homepage.group=Utilities
-      - homepage.name=Adguard
-      - homepage.icon=adguard-home.png
-      - homepage.href=https://${ADGUARD_HOSTNAME}
-      - homepage.description=DNS Adblocker
-      - homepage.weight=0
-      - homepage.widget.type=adguard
-      - homepage.widget.url=https://${ADGUARD_HOSTNAME}
-      - homepage.widget.username=${ADGUARD_USERNAME:-${ADMIN_USERNAME:-admin}}
-      - homepage.widget.password=${ADGUARD_PASSWORD:-${GLOBAL_PASSWORD:-adminadmin}}
-    profiles:
-      - adguardhome
-
-  traefik-certs-dumper:
-    image: ghcr.io/ldez/traefik-certs-dumper:latest
-    container_name: traefik-certs-dumper
-    restart: always
-    entrypoint: sh -c '
-      apk add jq
-      ; while ! [ -e /data/acme.json ]
-      || ! [ `jq ".[] | .Certificates | length" /data/acme.json` != 0 ]; do
-      sleep 1
-      ; done
-      && traefik-certs-dumper file --version v2 --watch
-      --clean false
-      --source /data/acme.json --dest /certs'
-    volumes:
-      - ./letsencrypt:/data
-      - ./adguardhome/certs:/certs
+      - tsdproxy.enable=true
+      - tsdproxy.name=adguardhome
+      - tsdproxy.port.1=443/https:3000/http
+      - tsdproxy.dash.label=AdGuard Home
     profiles:
       - adguardhome
 

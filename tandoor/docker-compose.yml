@@ -12,24 +12,16 @@ services:
     volumes:
       - ${CONFIG_ROOT:-.}/tandoor/database:/opt/recipes/database
       - ${CONFIG_ROOT:-.}/tandoor/mediafiles:/opt/recipes/mediafiles
-      - ${CONFIG_ROOT:-.}/tandoor/nginx:/opt/recipes/http.d
       - tandoor-staticfiles:/opt/recipes/staticfiles
     healthcheck:
-      test: ["CMD", "wget", "http://127.0.0.1:80/recipes", "-qO", "/dev/null"]
+      test: ["CMD", "wget", "http://127.0.0.1:80/", "-qO", "/dev/null"]
       interval: 1m
       retries: 10
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tandoor.rule=PathPrefix(`/recipes`)
-      - traefik.http.routers.tandoor.tls=true
-      - traefik.http.routers.tandoor.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.tandoor.loadbalancer.server.port=80
-      - homepage.group=Apps
-      - homepage.name=Tandoor
-      - homepage.icon=tandoor-recipes.png
-      - homepage.href=/recipes
-      - homepage.description=Smart recipe management
-      - homepage.weight=1
+      - tsdproxy.enable=true
+      - tsdproxy.name=tandoor
+      - tsdproxy.port.1=443/https:80/http
+      - tsdproxy.dash.label=Tandoor
     profiles:
       - tandoor
 

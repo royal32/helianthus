@@ -12,8 +12,7 @@ services:
         condition: service_completed_successfully
     environment:
       - APP_PORT=22300
-      - APP_BASE_URL=https://${HOSTNAME}/joplin
-      - HOSTNAME=${HOSTNAME}
+      - APP_BASE_URL=https://joplin.${TAILNET_DOMAIN}
       - DB_CLIENT=sqlite3
       - SQLITE_DATABASE=/database/joplin.db
       - STORAGE_DRIVER=Type=Filesystem; Path=/storage
@@ -22,25 +21,16 @@ services:
     volumes:
       - ${CONFIG_ROOT:-.}/joplin/database:/database
       - ${CONFIG_ROOT:-.}/joplin/storage:/storage
-      - ${CONFIG_ROOT:-.}/joplin/healthcheck:/healthcheck
+      - ./joplin/healthcheck:/healthcheck:ro
     healthcheck:
       test: ["CMD", "node", "/healthcheck/healthcheck.js"]
       interval: 1m
       retries: 10
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.joplin.rule=PathPrefix(`/joplin`)
-      - traefik.http.routers.joplin.tls=true
-      - traefik.http.routers.joplin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.joplin.middlewares=joplin-stripprefix
-      - traefik.http.middlewares.joplin-stripprefix.stripPrefix.prefixes=/joplin
-      - traefik.http.services.joplin.loadbalancer.server.port=22300
-      - homepage.group=Apps
-      - homepage.name=Joplin
-      - homepage.icon=joplin.png
-      - homepage.href=/joplin
-      - homepage.description=Note-taking application
-      - homepage.weight=2
+      - tsdproxy.enable=true
+      - tsdproxy.name=joplin
+      - tsdproxy.port.1=443/https:22300/http
+      - tsdproxy.dash.label=Joplin
     profiles:
       - joplin
 

@@ -21,21 +21,10 @@ services:
         condition: service_completed_successfully
     restart: always
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.immich.rule=(Host(`${IMMICH_HOSTNAME}`))
-      - traefik.http.routers.immich.tls=true
-      - traefik.http.routers.immich.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.immich.loadbalancer.server.port=2283
-      - homepage.group=Apps
-      - homepage.name=Immich
-      - homepage.icon=immich.png
-      - homepage.href=https://${IMMICH_HOSTNAME}
-      - homepage.description=Self-hosted photo and video management solution
-      - homepage.weight=4
-      - homepage.widget.type=immich
-      - homepage.widget.url=http://immich-server:2283
-      - homepage.widget.key=${IMMICH_API_KEY}
-      - homepage.widget.version=2
+      - tsdproxy.enable=true
+      - tsdproxy.name=immich
+      - tsdproxy.port.1=443/https:2283/http
+      - tsdproxy.dash.label=Immich
     profiles:
       - immich
 

@@ -3,7 +3,7 @@
 After searching for the perfect NAS solution, I realized what I wanted could be achieved
 with some Docker containers on a vanilla Linux box. The result is an opinionated Docker Compose configuration capable of
 browsing indexers to retrieve media resources and downloading them through a WireGuard VPN with port forwarding.
-SSL certificates and remote access through Tailscale are supported.
+Web applications are exposed privately through TSDProxy and Tailscale MagicDNS.
 
 Requirements: Any Docker-capable recent Linux box with Docker Engine and Docker Compose V2.
 I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology DS220+ with DSM 7.1](#synology-quirks).
@@ -29,8 +29,7 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
   - [Jellyfin](#jellyfin)
   - [Homepage](#homepage)
   - [Seerr](#seerr)
-  - [Traefik and SSL Certificates](#traefik-and-ssl-certificates)
-    - [Accessing from the outside with Tailscale](#accessing-from-the-outside-with-tailscale)
+  - [Tailscale Access](#tailscale-access)
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
     - [SABnzbd](#sabnzbd)
@@ -49,7 +48,6 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
   - [Customization](#customization)
     - [Optional: Using the VPN for \*arr apps](#optional-using-the-vpn-for-arr-apps)
   - [Synology Quirks](#synology-quirks)
-    - [Free Ports 80 and 443](#free-ports-80-and-443)
     - [Install Synology WireGuard](#install-synology-wireguard)
     - [Free Port 1900](#free-port-1900)
     - [User Permissions](#user-permissions)
@@ -64,34 +62,34 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
 
 | **Application**                                                    | **Description**                                                                                                                                               | **Image**                                                                                | **URL**                |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------- |
-| [Sonarr](https://sonarr.tv)                                        | PVR for newsgroup and bittorrent users                                                                                                                        | [linuxserver/sonarr](https://hub.docker.com/r/linuxserver/sonarr)                        | /sonarr                |
-| [Radarr](https://radarr.video)                                     | Movie collection manager for Usenet and BitTorrent users                                                                                                      | [linuxserver/radarr](https://hub.docker.com/r/linuxserver/radarr)                        | /radarr                |
-| [Bazarr](https://www.bazarr.media/)                                | Companion application to Sonarr and Radarr that manages and downloads subtitles                                                                               | [linuxserver/bazarr](https://hub.docker.com/r/linuxserver/bazarr)                        | /bazarr                |
-| [Prowlarr](https://github.com/Prowlarr/Prowlarr)                   | Indexer aggregator for Sonarr and Radarr                                                                                                                      | [linuxserver/prowlarr:latest](https://hub.docker.com/r/linuxserver/prowlarr)             | /prowlarr              |
+| [Sonarr](https://sonarr.tv)                                        | PVR for newsgroup and bittorrent users                                                                                                                        | [linuxserver/sonarr](https://hub.docker.com/r/linuxserver/sonarr)                        | `sonarr.${TAILNET_DOMAIN}` |
+| [Radarr](https://radarr.video)                                     | Movie collection manager for Usenet and BitTorrent users                                                                                                      | [linuxserver/radarr](https://hub.docker.com/r/linuxserver/radarr)                        | `radarr.${TAILNET_DOMAIN}` |
+| [Bazarr](https://www.bazarr.media/)                                | Companion application to Sonarr and Radarr that manages and downloads subtitles                                                                               | [linuxserver/bazarr](https://hub.docker.com/r/linuxserver/bazarr)                        | `bazarr.${TAILNET_DOMAIN}` |
+| [Prowlarr](https://github.com/Prowlarr/Prowlarr)                   | Indexer aggregator for Sonarr and Radarr                                                                                                                      | [linuxserver/prowlarr:latest](https://hub.docker.com/r/linuxserver/prowlarr)             | `prowlarr.${TAILNET_DOMAIN}` |
 | [PIA WireGuard VPN](https://github.com/thrnz/docker-wireguard-pia) | Encapsulate qBittorrent traffic in [PIA](https://www.privateinternetaccess.com/) using [WireGuard](https://www.wireguard.com/) with port forwarding.          | [thrnz/docker-wireguard-pia](https://hub.docker.com/r/thrnz/docker-wireguard-pia)        |                        |
-| [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Uses VPN network<br/>Using Libtorrent 1.x                                                                        | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | /qbittorrent           |
+| [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Uses VPN network<br/>Using Libtorrent 1.x                                                                        | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | `qbittorrent.${TAILNET_DOMAIN}` |
 | [Unpackerr](https://unpackerr.zip)                                 | Automated Archive Extractions                                                                                                                                 | [golift/unpackerr](https://hub.docker.com/r/golift/unpackerr)                            |                        |
-| [Jellyfin](https://jellyfin.org)                                   | Media server designed to organize, manage, and share digital media files to networked devices                                                                 | [linuxserver/jellyfin](https://hub.docker.com/r/linuxserver/jellyfin)                    | /jellyfin              |
-| [Jellyseer](https://seerr.dev/)                                    | Manages requests for your media library                                                                                                                       | [docker pull ghcr.io/seerr-team/seerr:sha-04b9d87](https://github.com/seerr-team/seerr/pkgs/container/seerr)                | `$SEERR_HOSTNAME` |
-| [Homepage](https://gethomepage.dev)                                | Application dashboard                                                                                                                                         | [gethomepage/homepage](https://github.com/gethomepage/homepage/pkgs/container/homepage)  | /                      |
-| [Traefik](https://traefik.io)                                      | Reverse proxy                                                                                                                                                 | [traefik](https://hub.docker.com/_/traefik)                                              |                        |
+| [Jellyfin](https://jellyfin.org)                                   | Media server designed to organize, manage, and share digital media files to networked devices                                                                 | [linuxserver/jellyfin](https://hub.docker.com/r/linuxserver/jellyfin)                    | `jellyfin.${TAILNET_DOMAIN}` |
+| [Jellyseer](https://seerr.dev/)                                    | Manages requests for your media library                                                                                                                       | [docker pull ghcr.io/seerr-team/seerr:sha-04b9d87](https://github.com/seerr-team/seerr/pkgs/container/seerr)                | `seerr.${TAILNET_DOMAIN}` |
+| [Homepage](https://gethomepage.dev)                                | Application dashboard                                                                                                                                         | [gethomepage/homepage](https://github.com/gethomepage/homepage/pkgs/container/homepage)  | `homepage.${TAILNET_DOMAIN}` |
+| [TSDProxy](https://github.com/almeidapaulopt/tsdproxy)             | Tailscale reverse proxy that exposes labelled containers as private MagicDNS HTTPS services                                                                     | [almeidapaulopt/tsdproxy](https://hub.docker.com/r/almeidapaulopt/tsdproxy)              |                        |
 | [Watchtower](https://watchtower.nickfedor.com)                     | Automated Docker images update                                                                                                                                | [nicholas-fedor/watchtower](https://ghcr.io/nicholas-fedor/watchtower)                   |                        |
 | [Autoheal](https://github.com/willfarrell/docker-autoheal/)        | Monitor and restart unhealthy Docker containers                                                                                                               | [willfarrell/autoheal](https://hub.docker.com/r/willfarrell/autoheal)                    |                        |
-| [Lidarr](https://lidarr.audio)                                     | Optional - Music collection manager for Usenet and BitTorrent users<br/>Enable with `COMPOSE_PROFILES=lidarr`                                                 | [linuxserver/lidarr](https://hub.docker.com/r/linuxserver/lidarr)                        | /lidarr                |
-| [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | /sabnzbd               |
+| [Lidarr](https://lidarr.audio)                                     | Optional - Music collection manager for Usenet and BitTorrent users<br/>Enable with `COMPOSE_PROFILES=lidarr`                                                 | [linuxserver/lidarr](https://hub.docker.com/r/linuxserver/lidarr)                        | `lidarr.${TAILNET_DOMAIN}` |
+| [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
-| [AdGuard Home](https://adguard.com/en/adguard-home/overview.html)  | Optional - Network-wide software for blocking ads & tracking<br/>Enable with `COMPOSE_PROFILES=adguardhome`                                                   | [adguard/adguardhome](https://hub.docker.com/r/adguard/adguardhome)                      |                        |
-| [Tandoor](https://tandoor.dev)                                     | Optional - Smart recipe management<br/>Enable with `COMPOSE_PROFILES=tandoor`                                                                                 | [vabene1111/recipes](https://hub.docker.com/r/vabene1111/recipes)                        | /recipes               |
-| [Joplin](https://joplinapp.org)                                    | Optional - Note taking application<br/>Enable with `COMPOSE_PROFILES=joplin`                                                                                  | [joplin/server](https://hub.docker.com/r/joplin/server)                                  | /joplin                |
-| [Home Assistant](https://www.home-assistant.io)                    | Optional - Open source home automation that puts local control and privacy first<br/>Enable with `COMPOSE_PROFILES=homeassistant`                             | [home-assistant/home-assistant:stable](https://ghcr.io/home-assistant/home-assistant)    |                        |
-| [Immich](https://immich.app)                                       | Optional - Self-hosted photo and video management solution<br/>Enable with `COMPOSE_PROFILES=immich`                                                          | [immich-app/immich-server:release](https://ghcr.io/immich-app/immich-server)             |                        |
-| [Calibre-Web](https://github.com/janeczku/calibre-web)             | Optional - Web app for browsing, reading and downloading eBooks stored in a Calibre database<br/>Enable with `COMPOSE_PROFILES=calibre-web`                   | [linuxserver/calibre-web](https://hub.docker.com/r/linuxserver/calibre-web)              | /calibre               |
-| [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | /vaultwarden           |
-| [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | /cleanuparr            |
+| [AdGuard Home](https://adguard.com/en/adguard-home/overview.html)  | Optional - Network-wide software for blocking ads & tracking<br/>Enable with `COMPOSE_PROFILES=adguardhome`                                                   | [adguard/adguardhome](https://hub.docker.com/r/adguard/adguardhome)                      | `adguardhome.${TAILNET_DOMAIN}` |
+| [Tandoor](https://tandoor.dev)                                     | Optional - Smart recipe management<br/>Enable with `COMPOSE_PROFILES=tandoor`                                                                                 | [vabene1111/recipes](https://hub.docker.com/r/vabene1111/recipes)                        | `tandoor.${TAILNET_DOMAIN}` |
+| [Joplin](https://joplinapp.org)                                    | Optional - Note taking application<br/>Enable with `COMPOSE_PROFILES=joplin`                                                                                  | [joplin/server](https://hub.docker.com/r/joplin/server)                                  | `joplin.${TAILNET_DOMAIN}` |
+| [Home Assistant](https://www.home-assistant.io)                    | Optional - Open source home automation that puts local control and privacy first<br/>Enable with `COMPOSE_PROFILES=homeassistant`                             | [home-assistant/home-assistant:stable](https://ghcr.io/home-assistant/home-assistant)    | `homeassistant.${TAILNET_DOMAIN}` |
+| [Immich](https://immich.app)                                       | Optional - Self-hosted photo and video management solution<br/>Enable with `COMPOSE_PROFILES=immich`                                                          | [immich-app/immich-server:release](https://ghcr.io/immich-app/immich-server)             | `immich.${TAILNET_DOMAIN}` |
+| [Calibre-Web](https://github.com/janeczku/calibre-web)             | Optional - Web app for browsing, reading and downloading eBooks stored in a Calibre database<br/>Enable with `COMPOSE_PROFILES=calibre-web`                   | [linuxserver/calibre-web](https://hub.docker.com/r/linuxserver/calibre-web)              | `calibre.${TAILNET_DOMAIN}` |
+| [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
+| [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
 | [Cross-Seed](https://github.com/cross-seed/cross-seed)             | Optional - Cross-Seed is a tool for automating the cross-seeding of torrents<br/>Enable with `COMPOSE_PROFILES=cross-seed`                                    | [cross-seed/cross-seed](https://ghcr.io/cross-seed/cross-seed)                           |                        |
-| [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | /autobrr               |
-| [Suggestarr](github.com/giuseppe99barchetta/SuggestArr)                      | Optional - SuggestArr is a project designed to automate media content recommendations and download requests<br/>Enable with `COMPOSE_PROFILES=suggestarr`                                            | [ciuse99/suggestarr](https://hub.docker.com/r/ciuse99/suggestarr)                                       | /suggestarr               |
-| [Paperless Ngx](https://paperless-ngx.com)                            | Optional - Document management system for organizing and searching your documents<br/>Enable with `COMPOSE_PROFILES=paperless`                                                     | [paperless-ngx/paperless-ngx](https://ghcr.io/paperless-ngx/paperless-ngx)                           | /paperless               |
+| [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | `autobrr.${TAILNET_DOMAIN}` |
+| [Suggestarr](github.com/giuseppe99barchetta/SuggestArr)                      | Optional - SuggestArr is a project designed to automate media content recommendations and download requests<br/>Enable with `COMPOSE_PROFILES=suggestarr`                                            | [ciuse99/suggestarr](https://hub.docker.com/r/ciuse99/suggestarr)                                       | `suggestarr.${TAILNET_DOMAIN}` |
+| [Paperless Ngx](https://paperless-ngx.com)                            | Optional - Document management system for organizing and searching your documents<br/>Enable with `COMPOSE_PROFILES=paperless`                                                     | [paperless-ngx/paperless-ngx](https://ghcr.io/paperless-ngx/paperless-ngx)                           | `paperless.${TAILNET_DOMAIN}` |
 
 Optional containers are not enabled by default, they need to be enabled,
 see [Optional Services](#optional-services) for more information.
@@ -112,15 +110,13 @@ The only values most users need to fill are:
 - `DATA_ROOT`, `DOWNLOAD_ROOT`, and `IMMICH_UPLOAD_LOCATION` for host media paths.
 - `CONFIG_ROOT` for app runtime config/databases. Delete this directory between test runs to reset the stack without deleting media.
 - `PIA_LOCATION`, `PIA_USER`, `PIA_PASS`, and usually `PIA_LOCAL_NETWORK` for Private Internet Access.
-- `PUBLIC_HOSTNAME` for the LAN hostname clients should use, for example `velvet.local`.
+- `TAILNET_DOMAIN` for the DNS suffix shown in the Tailscale admin console, for example `example-tailnet.ts.net`.
 - `GLOBAL_PASSWORD` if you want a password other than `adminadmin`.
 - `JELLYFIN_SERVER_NAME` if you want Jellyfin to show a custom server name.
 
 Every service username defaults to `admin`. Blank per-service password fields use `GLOBAL_PASSWORD`; fill a service-specific password only when it should differ.
 
-For local access, leave `TRAEFIK_CERT_RESOLVER` empty and use `PUBLIC_SCHEME=http` with `FORCE_HTTPS=false`. `docker compose up` still generates a local Traefik certificate for `localhost`, `PUBLIC_HOSTNAME`, `SEERR_HOSTNAME`, `*.local`, and any `LOCAL_TLS_HOSTS` or `MDNS_ALIASES` for users who choose to enable HTTPS.
-Public certificate authorities do not issue browser-trusted certificates for `.local` names; use a real domain with ACME if remote clients must see a fully trusted HTTPS certificate without trusting a local CA.
-Set `TRAEFIK_CERT_RESOLVER=myresolver` only when you have configured ACME and the required DNS provider credentials.
+Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`. TSDProxy uses that ignored secret file to create a private HTTPS endpoint for each labelled web service. Tailscale normally establishes direct peer-to-peer connections on the LAN, so the same URLs are used locally and remotely.
 
 Common examples:
 
@@ -140,24 +136,18 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `DATA_ROOT`                    | Host location of the data files                                                                                                                                                                        | `/mnt/data`                                      |
 | `DOWNLOAD_ROOT`                | Host download location for qBittorrent, should be a subfolder of `DATA_ROOT`                                                                                                                           | `/mnt/data/torrents`                             |
 | `IMMICH_UPLOAD_LOCATION`       | Host location for Immich uploads, if Immich is enabled                                                                                                                                                 | `/mnt/data/photos`                               |
-| `CONFIG_ROOT`                  | Host location for generated service config, app databases, Traefik local certs, and other resettable runtime state                                                                                      | `./runtime`                                      |
+| `CONFIG_ROOT`                  | Host location for generated service config, app databases, and other resettable runtime state                                                                                                           | `./runtime`                                      |
 | `PIA_LOCATION`                 | Servers to use for PIA. [see list here](https://serverlist.piaservers.net/vpninfo/servers/v6)                                                                                                          | `ca` (Montreal, Canada)                          |
 | `PIA_USER`                     | PIA username                                                                                                                                                                                           |                                                  |
 | `PIA_PASS`                     | PIA password                                                                                                                                                                                           |                                                  |
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                              |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                       |                                                  |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
-| `PUBLIC_HOSTNAME`              | LAN hostname clients should use for path-routed services, for example `velvet.local`                                                                                                                   | `localhost`                                      |
-| `PUBLIC_SCHEME`                | External URL scheme used when generating app links and integration URLs                                                                                                                                | `http`                                           |
-| `BASE_HOSTNAME`                | Base hostname used to derive service-specific hostnames such as `SEERR_HOSTNAME`                                                                                                                       | `${PUBLIC_HOSTNAME}`                             |
-| `TRAEFIK_CERT_RESOLVER`        | Traefik certificate resolver to use for ACME certificates. Leave empty for local setups such as `localhost`, set to `myresolver` when DNS challenge credentials are configured.                     |                                                  |
-| `FORCE_HTTPS`                  | Whether Traefik should redirect HTTP requests to HTTPS. Keep `false` for `.local` access unless client devices trust the local certificate.                                                          | `false`                                          |
-| `LOCAL_TLS_HOSTS`              | Optional comma-separated extra hostnames to include in the generated local Traefik certificate.                                                                                                        |                                                  |
-| `MDNS_ALIASES`                 | Optional comma-separated `.local` aliases for the container mDNS publisher to advertise. Leave blank to rely on the host's native hostname advertisement.                                             |                                                  |
-| `MDNS_ADVERTISE_IP`            | LAN IP to advertise for `MDNS_ALIASES`. Required when `MDNS_ALIASES` is set.                                                                                                                           |                                                  |
-| `ADGUARD_HOSTNAME`             | Optional - AdGuard Home hostname used, if enabled                                                                                                                                                      |                                                  |
+| `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
+| `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
+| `TSDPROXY_DASHBOARD_PORT`      | Localhost-only diagnostic port for the TSDProxy dashboard.                                                                                                                                             | `8080`                                           |
 | `ADGUARD_USERNAME`             | Optional - AdGuard Home username override                                                                                                                                                              |                                                  |
 | `ADGUARD_PASSWORD`             | Optional - AdGuard Home password override                                                                                                                                                              |                                                  |
 | `QBITTORRENT_USERNAME`         | Optional qBittorrent username override                                                                                                                                                                 |                                                  |
@@ -176,13 +166,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `SONARR_QBIT_CATEGORY`         | qBittorrent category configured for Sonarr                                                                                                                                                              | `tv-sonarr`                                      |
 | `RADARR_QBIT_CATEGORY`         | qBittorrent category configured for Radarr                                                                                                                                                              | `radarr`                                         |
 | `LIDARR_QBIT_CATEGORY`         | qBittorrent category configured for Lidarr                                                                                                                                                              | `lidarr`                                         |
-| `DNS_CHALLENGE`                | Enable/Disable DNS01 challenge, set to `false` to disable.                                                                                                                                             | `true`                                           |
-| `DNS_CHALLENGE_PROVIDER`       | Provider for DNS01 challenge, [see list here](https://doc.traefik.io/traefik/https/acme/#providers).                                                                                                   | `cloudflare`                                     |
-| `LETS_ENCRYPT_CA_SERVER`       | Let's Encrypt CA Server used to generate certificates, set to production by default.<br/>Set to `https://acme-staging-v02.api.letsencrypt.org/directory` to test your changes with the staging server. | `https://acme-v02.api.letsencrypt.org/directory` |
-| `LETS_ENCRYPT_EMAIL`           | E-mail address used to send expiration notifications                                                                                                                                                   |                                                  |
-| `CLOUDFLARE_EMAIL`             | CloudFlare Account email                                                                                                                                                                               |                                                  |
-| `CLOUDFLARE_DNS_API_TOKEN`     | API token with `DNS:Edit` permission                                                                                                                                                                   |                                                  |
-| `CLOUDFLARE_ZONE_API_TOKEN`    | API token with `Zone:Read` permission                                                                                                                                                                  |                                                  |
 | `SONARR_API_KEY`               | Sonarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `RADARR_API_KEY`               | Radarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `LIDARR_API_KEY`               | Lidarr API key to show information in the homepage                                                                                                                                                     |                                                  |
@@ -201,7 +184,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `HOMEPAGE_VAR_WEATHER_UNIT`    | Homepage weather unit, either `metric` or `imperial`                                                                                                                                                   | `metric`                                         |
 | `CALIBRE_USERNAME`             | Optional - Calibre-Web username to show details in the homepage, if enabled                                                                                                                            | `admin`                                          |
 | `CALIBRE_PASSWORD`             | Optional - Calibre-Web password to show details in the homepage, if enabled                                                                                                                            | `admin123`                                       |
-| `SEERR_HOSTNAME`               | Seerr hostname used                                                                                                                                                                                   |                                                  |
 | `SEERR_RADARR_PROFILE`         | Radarr quality profile name selected automatically for Seerr movie requests                                                                                                                            | `HD-1080p`                                       |
 | `SEERR_RADARR_MINIMUM_AVAILABILITY` | Radarr minimum availability used for Seerr movie requests                                                                                                                                        | `released`                                       |
 | `SEERR_SONARR_PROFILE`         | Sonarr quality profile name selected automatically for Seerr series requests                                                                                                                           | `HD-1080p`                                       |
@@ -209,7 +191,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `SEERR_SONARR_SEASON_FOLDERS`  | Whether Seerr-created Sonarr requests should enable season folders                                                                                                                                     | `true`                                           |
 | `SEERR_SYNC_ENABLED`           | Whether Seerr should enable periodic sync against Sonarr/Radarr                                                                                                                                       | `true`                                           |
 | `SEERR_AUTO_SEARCH`            | Whether Seerr should enable automatic search for approved Sonarr/Radarr requests                                                                                                                       | `true`                                           |
-| `SEERR_JELLYFIN_EXTERNAL_URL`  | Optional external Jellyfin URL used in Seerr; defaults to `${PUBLIC_SCHEME}://${PUBLIC_HOSTNAME}/jellyfin` when left empty                                                                            |                                                  |
+| `SEERR_JELLYFIN_EXTERNAL_URL`  | Optional external Jellyfin URL used in Seerr; defaults to `https://jellyfin.${TAILNET_DOMAIN}` when left empty.                                                                                         |                                                  |
 | `SEERR_JELLYFIN_ADMIN_USERNAME` | Optional Jellyfin admin username override used by Seerr; blank uses `JELLYFIN_ADMIN_USERNAME`, which itself falls back to `ADMIN_USERNAME`                                                          |                                                  |
 | `SEERR_JELLYFIN_ADMIN_PASSWORD` | Optional Jellyfin admin password override used by Seerr; blank uses `JELLYFIN_ADMIN_PASSWORD`, which itself falls back to `GLOBAL_PASSWORD`                                                         |                                                  |
 | `SEERR_JELLYFIN_ADMIN_EMAIL`   | Optional email address for the Seerr admin user created during automated Jellyfin setup; defaults to the effective Seerr Jellyfin username                                                            |                                                  |
@@ -278,7 +260,7 @@ The indexers are configured through Prowlarr. They synchronize automatically to 
 
 `docker compose up` now adds the Prowlarr application links for Sonarr, Radarr, and Lidarr automatically when those services are running.
 
-The Prowlarr server is `http://prowlarr:9696/prowlarr`, the Radarr server is `http://radarr:7878/radarr`, the Sonarr server is `http://sonarr:8989/sonarr`, and the Lidarr server is `http://lidarr:8686/lidarr`.
+The internal Prowlarr server is `http://prowlarr:9696`, Radarr is `http://radarr:7878`, Sonarr is `http://sonarr:8989`, and Lidarr is `http://lidarr:8686`.
 
 Their API keys can be found in Settings > Security > API Key.
 
@@ -334,9 +316,7 @@ The files in `/homepage/tpl/*.yaml` only serve as a base to set up the homepage 
 
 Jellyseer gives you content recommendations, allows others to make requests to you, and allows logging in with Jellyfin credentials.
 
-Set the `SEERR_HOSTNAME`, since it does not support
-[running in a subfolder](https://github.com/seerr-team/seerr/pull/1411).
-Add the necessary DNS records in your domain.
+It is exposed at `https://seerr.${TAILNET_DOMAIN}` and runs at the root path like every other TSDProxy service.
 
 `docker compose up` now preconfigures Seerr's Sonarr and Radarr services automatically, syncs Seerr's API key back into `.env` for the Homepage widget, and preconfigures Jellyfin connection details when Jellyfin is enabled.
 
@@ -352,76 +332,42 @@ If you want to run just the integration step again, use:
 
 The values used are:
 
-- Jellyfin: http://jellyfin:8096/jellyfin
+- Jellyfin: `http://jellyfin:8096`
 - Radarr:
   - Hostname: `radarr`
   - Port: `7878`
-  - URL Base: `/radarr`
+  - URL Base: blank
 - Sonarr:
   - Hostname: `sonarr`
   - Port: `8989`
-  - URL Base: `/sonarr`
+  - URL Base: blank
 
-## Traefik and SSL Certificates
+## Tailscale Access
 
-While you can use the private IP to access your NAS, how cool would it be for it to be accessible through a subdomain
-with a valid SSL certificate?
+TSDProxy is the only HTTP access layer. It discovers containers with `tsdproxy.enable=true`, creates one private Tailscale node per service, terminates Tailscale HTTPS, and proxies directly to the service over the shared Docker network. Traefik, mDNS aliases, subpath routing, and public DNS certificates are not used.
 
-Traefik makes this trivial by using Let's Encrypt and one of its
-[supported ACME challenge providers](https://doc.traefik.io/traefik/https/acme).
+Create a reusable Tailscale auth key and place it in the ignored secret file:
 
-Let's assume we are using `nas.domain.com` as custom subdomain.
-
-The idea is to create an A record pointing to the private IP of the NAS, `192.168.0.10` for example:
-
-```
-nas.domain.com.	1	IN	A	192.168.0.10
+```shell
+mkdir -p secrets
+printf "%s\n" "<tailscale-auth-key>" > secrets/tsdproxy_authkey
+chmod 600 secrets/tsdproxy_authkey
 ```
 
-The record will be publicly exposed but not resolve given this is a private IP.
+Set `TAILNET_DOMAIN` in `.env` to the DNS suffix shown in the Tailscale admin console, then start the stack. Applications use dedicated URLs such as:
 
-Given the NAS is not accessible from the internet, we need to do a dnsChallenge.
-Here we will be using CloudFlare, but the mechanism will be the same for all DNS providers
-baring environment variable changes, see the Traefik documentation above and [Lego's documentation](https://go-acme.github.io/lego/dns).
-
-Then, fill the CloudFlare `.env` entries.
-
-If you want to test your configuration first, use the Let's Encrypt staging server by updating `LETS_ENCRYPT_CA_SERVER`'s
-value in `.env`:
-
-```
-LETS_ENCRYPT_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+```text
+https://homepage.<tailnet-domain>
+https://sonarr.<tailnet-domain>
+https://radarr.<tailnet-domain>
+https://jellyfin.<tailnet-domain>
 ```
 
-If it worked, you will see the staging certificate at https://nas.domain.com.
-You may remove the `./letsencrypt/acme.json` file and restart the services to issue the real certificate.
+The TSDProxy dashboard is available privately at `https://tsdproxy-dashboard.<tailnet-domain>`. Its diagnostic host port is bound only to `127.0.0.1:8080` by default.
 
-You are free to use any DNS01 provider. Simply replace `DNS_CHALLENGE_PROVIDER` with your own provider,
-[see complete list here](https://doc.traefik.io/traefik/https/acme/#providers).
-You will also need to inject the environments variables specific to your provider.
+Container-to-container integrations must continue using Docker DNS names such as `http://sonarr:8989`; do not use Tailscale URLs for internal traffic. Run `python3 scripts/validate-access-config.py` to check for duplicate TSDProxy names, stale Traefik labels, and unsafe proxy port bindings.
 
-Certificate generation can be disabled by leaving `TRAEFIK_CERT_RESOLVER` empty or by setting `DNS_CHALLENGE` to `false`.
-
-### Accessing from the outside with Tailscale
-
-If we want to make it reachable from outside the network without opening ports or exposing it to the internet, I found
-[Tailscale](https://tailscale.com) to be a great solution: create a network, run the client on both the NAS and the device
-you are connecting from, and they will see each other.
-
-In this case, the A record should point to the IP Tailscale assigned to the NAS, eg `100.xxx.xxx.xxx`:
-
-```
-nas.domain.com.	1	IN	A	100.xxx.xxx.xxx
-```
-
-See [here](https://tailscale.com/kb/installation) for installation instructions.
-
-However, this means you will always need to be connected to Tailscale to access your NAS, even locally.
-This can be remedied by overriding the DNS entry for the NAS domain like `192.168.0.10 nas.domain.com`
-in your local DNS resolver such as Pi-Hole.
-
-This way, when connected to the local network, the NAS is accessible directly from the private IP,
-and from the outside you need to connect to Tailscale first, then the NAS domain will be accessible.
+Enable new optional profiles in small batches. Each new HTTPS hostname requires a Tailscale/Let's Encrypt certificate, and requesting many first-time certificates together can temporarily hit issuance limits. Existing nodes and certificates are persisted under `CONFIG_ROOT/tsdproxy/data`.
 
 ## Optional Services
 
@@ -448,11 +394,11 @@ Modify the configuration file as follows:
 module.exports = {
   ...
   torznab: [
-    "http://prowlarr:9696/prowlarr/1/api?apikey=<api_key>",
+    "http://prowlarr:9696/1/api?apikey=<api_key>",
     ...
   ],
-  sonarr: ["http://sonarr:8989/sonarr?apikey=<api_key>"],
-  radarr: ["http://radarr:7878/radarr?apikey=<api_key>"],
+  sonarr: ["http://sonarr:8989?apikey=<api_key>"],
+  radarr: ["http://radarr:7878?apikey=<api_key>"],
   torrentClients: ["qbittorrent:http://admin:adminadmin@vpn:8080"],
   linkDirs: ["/data/torrents"],
   ...
@@ -461,28 +407,17 @@ module.exports = {
 
 ### SABnzbd
 
-Enable SABnzbd by setting `COMPOSE_PROFILES=sabnzbd`. It will be accessible at `/sabnzbd`.
-
-If that is not the case, the `url_base` parameter in `sabnzbd.ini` should be set to `/sabnzbd`.
-
-Additionally, `host_whitelist` value should be set to your hostname.
+Enable SABnzbd by setting `COMPOSE_PROFILES=sabnzbd`. It is available at `https://sabnzbd.${TAILNET_DOMAIN}` and should keep a blank `url_base`.
 
 ### AdGuard Home
 
 Enable AdGuard Home by setting `COMPOSE_PROFILES=adguardhome`.
 
-Set the `ADGUARD_HOSTNAME`, I chose a different subdomain to use secure DNS without the folder.
 
-On first run, specify the port 3000 and enable listen on all interfaces to make it work with Tailscale.
+On first run, specify port 3000 and enable listening on all interfaces so TSDProxy can reach it.
 
 If after running `docker compose up -d`, you're getting `network docker-compose-nas declared as external, but could not be found`,
 run `docker network create docker-compose-nas` first.
-
-#### Encryption
-
-In Settings > Encryption Settings, set the certificates path to `/opt/adguardhome/certs/certs/<YOUR_HOSTNAME>.crt`
-and the private key to `/opt/adguardhome/certs/private/<YOUR_HOSTNAME>.key`, those files are created by Traefik cert dumper
-from the ACME certificates Traefik generates in JSON.
 
 #### DHCP
 
@@ -589,25 +524,13 @@ depends_on:
 ```
 
 Change the healthcheck to mark the containers as unhealthy when internet connection is not working by appending a URL
-to the healthcheck, eg: `test: [ "CMD", "curl", "--fail", "http://127.0.0.1:7878/radarr/ping", "https://google.com" ]`
+to the healthcheck, eg: `test: [ "CMD", "curl", "--fail", "http://127.0.0.1:7878/ping", "https://google.com" ]`
 
 Then in Prowlarr, use `localhost` rather than `vpn` as the hostname, since they are on the same network.
 
 ## Synology Quirks
 
 Docker compose NAS can run on DSM 7.1, with a few extra steps.
-
-### Free Ports 80 and 443
-
-By default, ports 80 and 443 are used by Nginx but not actually used for anything useful. Free them by creating a new task
-in the Task Scheduler > Create > Triggered Task > User-defined script. Leave the Event as `Boot-up` and the `root` user,
-go to Task Settings and paste the following in User-defined script:
-
-```
-sed -i -e 's/80/81/' -e 's/443/444/' /usr/syno/share/nginx/server.mustache /usr/syno/share/nginx/DSM.mustache /usr/syno/share/nginx/WWWService.mustache
-
-synosystemctl restart nginx
-```
 
 ### Install Synology WireGuard
 

@@ -8,32 +8,16 @@ services:
     env_file:
       - path: ${CONFIG_ROOT:-.}/vaultwarden/.env
         required: false
+    environment:
+      - DOMAIN=https://vaultwarden.${TAILNET_DOMAIN}
     depends_on:
       stack-bootstrap:
         condition: service_completed_successfully
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.vaultwarden-ui.rule=PathPrefix(`/vaultwarden`)
-      - traefik.http.routers.vaultwarden-ui.tls=true
-      - traefik.http.routers.vaultwarden-ui.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.vaultwarden-ui.loadbalancer.server.port=80
-      - traefik.http.services.vaultwarden-ui.loadbalancer.passhostheader=true
-      - traefik.http.routers.vaultwarden-ui.service=vaultwarden-ui
-      - traefik.http.routers.vaultwarden-ui.middlewares=vaultwarden-strip-slash
-      - traefik.http.middlewares.vaultwarden-strip-slash.redirectregex.regex=(^.*\/vaultwarden$$)
-      - traefik.http.middlewares.vaultwarden-strip-slash.redirectregex.replacement=$$1/
-      - traefik.http.middlewares.vaultwarden-strip-slash.redirectregex.permanent=false
-      - traefik.http.routers.vaultwarden-ws.rule=Path(`/vaultwarden/notifications/hub`)
-      - traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012
-      - traefik.http.routers.vaultwarden-ws.tls=true
-      - traefik.http.routers.vaultwarden-ws.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.routers.vaultwarden-ws.service=vaultwarden-ws
-      - homepage.group=Utilities
-      - homepage.name=Vaultwarden
-      - homepage.icon=vaultwarden.png
-      - homepage.href=/vaultwarden
-      - homepage.description=Password Manager
-      - homepage.weight=1
+      - tsdproxy.enable=true
+      - tsdproxy.name=vaultwarden
+      - tsdproxy.port.1=443/https:80/http
+      - tsdproxy.dash.label=Vaultwarden
     profiles:
       - vaultwarden
 

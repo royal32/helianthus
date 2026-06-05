@@ -18,24 +18,16 @@ services:
         required: false
     environment:
       PAPERLESS_REDIS: redis://paperless-broker:6379
-      PAPERLESS_FORCE_SCRIPT_NAME: /paperless
-      PAPERLESS_URL: https://${HOSTNAME}
+      PAPERLESS_URL: https://paperless.${TAILNET_DOMAIN}
       PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-${ADMIN_USERNAME:-admin}}
       PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:-${GLOBAL_PASSWORD:-adminadmin}}
       USERMAP_UID: ${USER_ID}
       USERMAP_GID: ${GROUP_ID}
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.paperless.rule=PathPrefix(`/paperless`)
-      - traefik.http.routers.paperless.tls=true
-      - traefik.http.routers.paperless.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-}
-      - traefik.http.services.paperless.loadbalancer.server.port=8000
-      - homepage.group=Apps
-      - homepage.name=Paperless
-      - homepage.icon=paperless.png
-      - homepage.href=/paperless
-      - homepage.description=Document management system
-      - homepage.weight=5
+      - tsdproxy.enable=true
+      - tsdproxy.name=paperless
+      - tsdproxy.port.1=443/https:8000/http
+      - tsdproxy.dash.label=Paperless
     profiles:
       - paperless
 

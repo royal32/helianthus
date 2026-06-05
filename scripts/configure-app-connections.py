@@ -33,7 +33,6 @@ class ArrService:
     display_name: str
     url_base: str
     api_key_env: str
-    hostname_env: str
     root_folder_env: str
     category_env: str
     download_path_env: str
@@ -49,7 +48,6 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         display_name="Sonarr",
         url_base="",
         api_key_env="SONARR_API_KEY",
-        hostname_env="SONARR_HOSTNAME",
         root_folder_env="SONARR_ROOT_FOLDER",
         category_env="SONARR_QBIT_CATEGORY",
         download_path_env="SONARR_DOWNLOAD_PATH",
@@ -63,7 +61,6 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         display_name="Radarr",
         url_base="",
         api_key_env="RADARR_API_KEY",
-        hostname_env="RADARR_HOSTNAME",
         root_folder_env="RADARR_ROOT_FOLDER",
         category_env="RADARR_QBIT_CATEGORY",
         download_path_env="RADARR_DOWNLOAD_PATH",
@@ -77,7 +74,6 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         display_name="Lidarr",
         url_base="",
         api_key_env="LIDARR_API_KEY",
-        hostname_env="LIDARR_HOSTNAME",
         root_folder_env="LIDARR_ROOT_FOLDER",
         category_env="LIDARR_QBIT_CATEGORY",
         download_path_env="LIDARR_DOWNLOAD_PATH",
@@ -311,7 +307,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Sonarr",
             "icon": "sonarr.png",
-            "href": build_external_url(env, "", env.get("SONARR_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "sonarr") or "/",
             "description": "Series management",
             "widget": {
                 "type": "sonarr",
@@ -324,7 +320,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Radarr",
             "icon": "radarr.png",
-            "href": build_external_url(env, "", env.get("RADARR_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "radarr") or "/",
             "description": "Movies management",
             "widget": {
                 "type": "radarr",
@@ -337,7 +333,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Seerr",
             "icon": "jellyseerr.png",
-            "href": build_external_url(env, "", env.get("SEERR_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "seerr") or "/",
             "description": "Content requests",
             "widget": {
                 "type": "jellyseerr",
@@ -350,7 +346,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Media",
             "name": "Jellyfin",
             "icon": "jellyfin.png",
-            "href": build_external_url(env, "", env.get("JELLYFIN_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "jellyfin") or "/",
             "description": "Media server",
             "widget": {
                 "type": "jellyfin",
@@ -363,7 +359,7 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Download",
             "name": "Prowlarr",
             "icon": "prowlarr.png",
-            "href": build_external_url(env, "", env.get("PROWLARR_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "prowlarr") or "/",
             "description": "Indexer management",
             "widget": {
                 "type": "prowlarr",
@@ -376,13 +372,162 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "group": "Download",
             "name": "qBittorrent",
             "icon": "qbittorrent.png",
-            "href": build_external_url(env, "", env.get("QBITTORRENT_HOSTNAME", "")) or "/",
+            "href": build_external_url(env, "qbittorrent") or "/",
             "description": "BitTorrent client",
             "widget": {
                 "type": "qbittorrent",
                 "url": "http://vpn:8080",
                 "username": env.get("QBITTORRENT_USERNAME", ""),
                 "password": env.get("QBITTORRENT_PASSWORD", ""),
+            },
+        },
+        {
+            "service": "lidarr",
+            "group": "Media",
+            "name": "Lidarr",
+            "icon": "lidarr.png",
+            "href": build_external_url(env, "lidarr") or "/",
+            "description": "Music management",
+            "widget": {
+                "type": "lidarr",
+                "url": "http://lidarr:8686",
+                "key": env.get("LIDARR_API_KEY", ""),
+            },
+        },
+        {
+            "service": "bazarr",
+            "group": "Download",
+            "name": "Bazarr",
+            "icon": "bazarr.png",
+            "href": build_external_url(env, "bazarr") or "/",
+            "description": "Subtitle management",
+            "widget": {
+                "type": "bazarr",
+                "url": "http://bazarr:6767",
+                "key": env.get("BAZARR_API_KEY", ""),
+            },
+        },
+        {
+            "service": "suggestarr",
+            "group": "Media",
+            "name": "Suggestarr",
+            "icon": "suggest-arr.png",
+            "href": build_external_url(env, "suggestarr") or "/",
+            "description": "Media recommendations",
+        },
+        {
+            "service": "autobrr",
+            "group": "Download",
+            "name": "Autobrr",
+            "icon": "autobrr.png",
+            "href": build_external_url(env, "autobrr") or "/",
+            "description": "Torrent download automation",
+            "widget": {
+                "type": "autobrr",
+                "url": "http://autobrr:7474",
+                "key": env.get("AUTOBRR_API_KEY", ""),
+            },
+        },
+        {
+            "service": "cleanuparr",
+            "group": "Download",
+            "name": "Cleanuparr",
+            "icon": "cleanuperr.png",
+            "href": build_external_url(env, "cleanuparr") or "/",
+            "description": "Download cleanup",
+        },
+        {
+            "service": "sabnzbd",
+            "group": "Download",
+            "name": "SABnzbd",
+            "icon": "sabnzbd.png",
+            "href": build_external_url(env, "sabnzbd") or "/",
+            "description": "Usenet downloads",
+            "widget": {
+                "type": "sabnzbd",
+                "url": "http://sabnzbd:8080",
+                "key": env.get("SABNZBD_API_KEY", ""),
+            },
+        },
+        {
+            "service": "calibre-web",
+            "group": "Media",
+            "name": "Calibre-Web",
+            "icon": "calibre-web.png",
+            "href": build_external_url(env, "calibre") or "/",
+            "description": "Book management",
+            "widget": {
+                "type": "calibreweb",
+                "url": "http://calibre-web:8083",
+                "username": env.get("CALIBRE_USERNAME", ""),
+                "password": env.get("CALIBRE_PASSWORD", ""),
+            },
+        },
+        {
+            "service": "tandoor",
+            "group": "Apps",
+            "name": "Tandoor",
+            "icon": "tandoor-recipes.png",
+            "href": build_external_url(env, "tandoor") or "/",
+            "description": "Recipe management",
+        },
+        {
+            "service": "joplin",
+            "group": "Apps",
+            "name": "Joplin",
+            "icon": "joplin.png",
+            "href": build_external_url(env, "joplin") or "/",
+            "description": "Note-taking server",
+        },
+        {
+            "service": "homeassistant",
+            "group": "Apps",
+            "name": "Home Assistant",
+            "icon": "home-assistant.png",
+            "href": build_external_url(env, "homeassistant") or "/",
+            "description": "Home automation",
+        },
+        {
+            "service": "immich-server",
+            "group": "Apps",
+            "name": "Immich",
+            "icon": "immich.png",
+            "href": build_external_url(env, "immich") or "/",
+            "description": "Photo and video management",
+            "widget": {
+                "type": "immich",
+                "url": "http://immich-server:2283",
+                "key": env.get("IMMICH_API_KEY", ""),
+            },
+        },
+        {
+            "service": "vaultwarden",
+            "group": "Utilities",
+            "name": "Vaultwarden",
+            "icon": "vaultwarden.png",
+            "href": build_external_url(env, "vaultwarden") or "/",
+            "description": "Password manager",
+        },
+        {
+            "service": "paperless-webserver",
+            "group": "Apps",
+            "name": "Paperless",
+            "icon": "paperless.png",
+            "href": build_external_url(env, "paperless") or "/",
+            "description": "Document management",
+        },
+        {
+            "service": "adguardhome",
+            "group": "Utilities",
+            "name": "AdGuard Home",
+            "icon": "adguard-home.png",
+            "href": build_external_url(env, "adguardhome") or "/",
+            "description": "DNS filtering",
+            "widget": {
+                "type": "adguard",
+                "url": "http://adguardhome:3000",
+                "username": env.get("ADGUARD_USERNAME", ""),
+                "password": env.get("ADGUARD_PASSWORD", ""),
             },
         },
     ]
@@ -419,12 +564,11 @@ def next_settings_id(items: list[dict[str, Any]]) -> int:
     return max((int(item.get("id", -1)) for item in items), default=-1) + 1
 
 
-def build_external_url(env: dict[str, str], path: str = "", host: str = "") -> str:
-    scheme = env.get("PUBLIC_SCHEME") or "https"
-    host = host or env.get("PUBLIC_HOSTNAME") or env.get("HOSTNAME", "")
-    if not host or "${" in host:
+def build_external_url(env: dict[str, str], service_name: str) -> str:
+    tailnet_domain = env.get("TAILNET_DOMAIN", "")
+    if not tailnet_domain or "${" in tailnet_domain:
         return ""
-    return f"{scheme}://{host}{path}"
+    return f"https://{service_name}.{tailnet_domain}"
 
 
 def run_compose(args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -987,7 +1131,7 @@ def build_seerr_radarr_settings(arr_api: ArrApi, env: dict[str, str]) -> dict[st
         "tags": [],
         "is4k": False,
         "isDefault": True,
-        "externalUrl": build_external_url(env, "", env.get(arr_api.service.hostname_env, "")),
+        "externalUrl": build_external_url(env, arr_api.service.service_name),
         "syncEnabled": env_bool(env, "SEERR_SYNC_ENABLED", True),
         "preventSearch": not env_bool(env, "SEERR_AUTO_SEARCH", True),
         "tagRequests": False,
@@ -1015,7 +1159,7 @@ def build_seerr_sonarr_settings(arr_api: ArrApi, env: dict[str, str]) -> dict[st
         "tags": [],
         "is4k": False,
         "isDefault": True,
-        "externalUrl": build_external_url(env, "", env.get(arr_api.service.hostname_env, "")),
+        "externalUrl": build_external_url(env, arr_api.service.service_name),
         "syncEnabled": env_bool(env, "SEERR_SYNC_ENABLED", True),
         "preventSearch": not env_bool(env, "SEERR_AUTO_SEARCH", True),
         "tagRequests": False,
@@ -1304,18 +1448,14 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
         if env_changed:
             env["JELLYFIN_API_KEY"] = jellyfin_api_key
 
-    seerr_application_url = build_external_url(env, "", env.get("SEERR_HOSTNAME", ""))
+    seerr_application_url = build_external_url(env, "seerr")
     if seerr_application_url and settings.get("main", {}).get("applicationUrl") != seerr_application_url:
         settings.setdefault("main", {})["applicationUrl"] = seerr_application_url
         settings_changed = True
 
     if "jellyfin" in running_services:
         jellyfin_public_info = JellyfinApi().get_public_info()
-        jellyfin_external_url = env.get("SEERR_JELLYFIN_EXTERNAL_URL", "") or build_external_url(
-            env,
-            "",
-            env.get("JELLYFIN_HOSTNAME", ""),
-        )
+        jellyfin_external_url = env.get("SEERR_JELLYFIN_EXTERNAL_URL", "") or build_external_url(env, "jellyfin")
         jellyfin_settings = settings.setdefault("jellyfin", {})
         desired_jellyfin = {
             "name": jellyfin_public_info.get("ServerName", jellyfin_settings.get("name", "")),

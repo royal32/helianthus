@@ -4,7 +4,8 @@
 
 ## Installation
 
-Enable Tandoor by setting `COMPOSE_PROFILES=tandoor`. It will be accessible at `/recipes`.
+Enable Tandoor by setting `COMPOSE_PROFILES=tandoor`. It will be accessible at
+`https://tandoor.<TAILNET_DOMAIN>`.
 
 `./scripts/setup-stack.sh --profiles tandoor` will create `tandoor/.env` automatically. If you prefer to do it manually, copy `tandoor/.env.example` to `tandoor/.env` and edit as needed.
 

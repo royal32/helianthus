@@ -36,7 +36,7 @@ Examples:
   ./scripts/setup-stack.sh
   ./scripts/setup-stack.sh --profiles paperless,vaultwarden
   ./scripts/setup-stack.sh --set DATA_ROOT=/srv/data --set DOWNLOAD_ROOT=/srv/data/torrents
-  ./scripts/setup-stack.sh --profiles immich,immich-backup --set IMMICH_HOSTNAME=photos.example.com
+  ./scripts/setup-stack.sh --profiles immich,immich-backup
 EOF
 }
 
@@ -180,7 +180,7 @@ set_if_missing_or_default() {
   local current_value
 
   current_value=$(get_env_value "$file" "$key" || true)
-  if [[ -z "$current_value" || "$current_value" == "$default_value" ]]; then
+  if [[ -z "$current_value" || ( "$current_value" == "$default_value" && "$current_value" != "$new_value" ) ]]; then
     set_env_value "$file" "$key" "$new_value"
     log "Set $key=$new_value"
   fi
@@ -194,6 +194,7 @@ copy_if_missing() {
     return 0
   fi
 
+  mkdir -p "$(dirname "$target_file")"
   cp "$source_file" "$target_file"
   log "Created ${target_file#$ROOT_DIR/} from template"
 }
@@ -265,48 +266,6 @@ detect_timezone() {
   printf '%s' "$timezone"
 }
 
-detect_local_hostname() {
-  local detected=""
-  local detected_from_host=0
-
-  if [[ -n "${NAS_HOST_HOSTNAME:-}" ]]; then
-    detected="$NAS_HOST_HOSTNAME"
-    detected_from_host=1
-  fi
-
-  if [[ -z "$detected" && -f /host/etc/hostname ]]; then
-    detected=$(cat /host/etc/hostname 2>/dev/null || true)
-    detected_from_host=1
-  fi
-
-  if [[ -z "$detected" ]] && command -v scutil >/dev/null 2>&1; then
-    detected=$(scutil --get LocalHostName 2>/dev/null || true)
-    detected_from_host=1
-  fi
-
-  if [[ -z "$detected" ]]; then
-    detected=$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)
-  fi
-
-  detected="${detected%%.*}"
-  detected=$(printf '%s' "$detected" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
-
-  if (( detected_from_host == 0 )) && [[ -f /.dockerenv && "$detected" =~ ^[0-9a-f]{12}$ ]]; then
-    detected="localhost"
-  fi
-  if [[ -f /.dockerenv && "$detected" =~ ^(orbstack|docker-desktop)$ ]]; then
-    detected="localhost"
-  fi
-
-  if [[ -z "$detected" ]]; then
-    detected="localhost"
-  elif [[ "$detected" != "localhost" ]]; then
-    detected="${detected}.local"
-  fi
-
-  printf '%s' "$detected"
-}
-
 profile_enabled() {
   local target="$1"
   local profiles_csv="$2"
@@ -316,7 +275,7 @@ profile_enabled() {
 
 ensure_commands() {
   local command_name
-  for command_name in docker awk sed cp chmod mktemp id python3 curl openssl; do
+  for command_name in docker awk sed cp chmod mktemp id python3 curl; do
     command -v "$command_name" >/dev/null 2>&1 || die "Missing required command: $command_name"
   done
 
@@ -326,7 +285,6 @@ ensure_commands() {
 ensure_root_env() {
   local data_root
   local config_root
-  local local_hostname
   local user_id
   local group_id
 
@@ -335,7 +293,6 @@ ensure_root_env() {
     log "Created .env from .env.example"
   fi
 
-  local_hostname=$(detect_local_hostname)
   user_id="${USER_ID:-$(id -u)}"
   group_id="${GROUP_ID:-$(id -g)}"
   if [[ -f /.dockerenv && "$user_id" == "0" ]]; then
@@ -348,21 +305,9 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "USER_ID" "1000" "$user_id"
   set_if_missing_or_default "$ENV_FILE" "GROUP_ID" "1000" "$group_id"
   set_if_missing_or_default "$ENV_FILE" "TIMEZONE" "America/New_York" "$(detect_timezone)"
-  set_if_missing_or_default "$ENV_FILE" "PUBLIC_HOSTNAME" "localhost" "media.local"
-  set_if_missing_or_default "$ENV_FILE" "PUBLIC_SCHEME" "" "http"
-  set_if_missing_or_default "$ENV_FILE" "BASE_HOSTNAME" "localhost" "\${PUBLIC_HOSTNAME}"
   set_if_missing_or_default "$ENV_FILE" "CONFIG_ROOT" "." "./runtime"
-  set_if_missing_or_default "$ENV_FILE" "FORCE_HTTPS" "" "false"
-  set_if_missing_or_default "$ENV_FILE" "MDNS_ENABLED" "" "true"
-  set_if_missing_or_default "$ENV_FILE" "HOMEPAGE_HOSTNAME" "" "\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "HOMEPAGE_ALIAS_HOSTNAME" "" "homepage.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "SONARR_HOSTNAME" "" "sonarr.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "RADARR_HOSTNAME" "" "radarr.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "PROWLARR_HOSTNAME" "" "prowlarr.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "QBITTORRENT_HOSTNAME" "" "qbittorrent.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "JELLYFIN_HOSTNAME" "" "jellyfin.\${PUBLIC_HOSTNAME}"
-  set_if_missing_or_default "$ENV_FILE" "SEERR_HOSTNAME" "seerr.\${BASE_HOSTNAME}" "seerr.\${PUBLIC_HOSTNAME}"
-  set_env_value "$ENV_FILE" "GENERATED_MDNS_ALIASES" "\${HOMEPAGE_HOSTNAME},\${HOMEPAGE_ALIAS_HOSTNAME},\${SONARR_HOSTNAME},\${RADARR_HOSTNAME},\${PROWLARR_HOSTNAME},\${QBITTORRENT_HOSTNAME},\${JELLYFIN_HOSTNAME},\${SEERR_HOSTNAME}"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DASHBOARD_PORT" "" "8080"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" "" "./secrets/tsdproxy_authkey"
 
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then
@@ -405,13 +350,59 @@ apply_root_overrides() {
   fi
 }
 
-ensure_acme_storage() {
-  local config_root
+remove_obsolete_root_env() {
+  local tmp_file
+  local profiles
+  local normalized_profiles
 
-  config_root=$(get_config_root)
-  mkdir -p "$config_root/letsencrypt"
-  touch "$config_root/letsencrypt/acme.json"
-  chmod 600 "$config_root/letsencrypt/acme.json"
+  tmp_file=$(mktemp)
+  awk -F= '
+    BEGIN {
+      split("PUBLIC_HOSTNAME PUBLIC_SCHEME BASE_HOSTNAME HOSTNAME TRAEFIK_CERT_RESOLVER FORCE_HTTPS LOCAL_TLS_HOSTS MDNS_ENABLED MDNS_ALIASES MDNS_ADVERTISE_IP GENERATED_MDNS_ALIASES HOMEPAGE_HOSTNAME HOMEPAGE_ALIAS_HOSTNAME SONARR_HOSTNAME RADARR_HOSTNAME PROWLARR_HOSTNAME QBITTORRENT_HOSTNAME JELLYFIN_HOSTNAME SEERR_HOSTNAME HOMEASSISTANT_HOSTNAME IMMICH_HOSTNAME ADGUARD_HOSTNAME DNS_CHALLENGE DNS_CHALLENGE_PROVIDER LETS_ENCRYPT_CA_SERVER LETS_ENCRYPT_EMAIL CLOUDFLARE_EMAIL CLOUDFLARE_DNS_API_TOKEN CLOUDFLARE_ZONE_API_TOKEN TSDPROXY_AUTHKEYFILE TSDPROXY_CONTROLURL TSDPROXY_EXPOSE_DASHBOARD TSDPROXY_DASHBOARD_NAME", keys, " ")
+      for (key_index in keys) {
+        obsolete[keys[key_index]] = 1
+      }
+    }
+    !($1 in obsolete) { print }
+  ' "$ENV_FILE" > "$tmp_file"
+  mv "$tmp_file" "$ENV_FILE"
+
+  profiles=$(get_env_value "$ENV_FILE" "COMPOSE_PROFILES" || true)
+  normalized_profiles=$(printf '%s' "$profiles" | tr ',' '\n' | awk 'NF && $0 != "tsdproxy" && !seen[$0]++' | paste -sd, -)
+  if [[ "$normalized_profiles" != "$profiles" ]]; then
+    set_env_value "$ENV_FILE" "COMPOSE_PROFILES" "$normalized_profiles"
+    log "Removed obsolete tsdproxy profile; TSDProxy is now always enabled"
+  fi
+}
+
+ensure_tsdproxy_authkey_secret() {
+  local authkey_path
+  local legacy_authkey
+
+  authkey_path=$(get_env_value "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" || printf './secrets/tsdproxy_authkey')
+  if [[ "$authkey_path" != /* ]]; then
+    authkey_path="$ROOT_DIR/${authkey_path#./}"
+  fi
+
+  mkdir -p "$(dirname "$authkey_path")"
+  chmod 700 "$(dirname "$authkey_path")"
+
+  legacy_authkey=$(get_env_value "$ENV_FILE" "TSDPROXY_AUTHKEY" || true)
+  if [[ ! -s "$authkey_path" && -n "$legacy_authkey" ]]; then
+    printf '%s\n' "$legacy_authkey" > "$authkey_path"
+    chmod 600 "$authkey_path"
+    log "Migrated TSDPROXY_AUTHKEY from .env to ${authkey_path#$ROOT_DIR/}"
+  elif [[ ! -e "$authkey_path" ]]; then
+    : > "$authkey_path"
+    chmod 600 "$authkey_path"
+    warn "Created empty ${authkey_path#$ROOT_DIR/}; add a reusable Tailscale auth key before starting TSDProxy"
+  fi
+
+  set_env_value "$ENV_FILE" "TSDPROXY_AUTHKEY" ""
+  remove_obsolete_root_env
+  tmp_file=$(mktemp)
+  awk -F= '$1 != "TSDPROXY_AUTHKEY" { print }' "$ENV_FILE" > "$tmp_file"
+  mv "$tmp_file" "$ENV_FILE"
 }
 
 clean_appledouble_files() {
@@ -432,7 +423,7 @@ ensure_seerr_config_permissions() {
 }
 
 repair_seerr_config_permissions_with_image() {
-  if docker compose run --rm --no-deps --user root --entrypoint sh seerr -lc \
+  if docker compose run --rm --no-deps --label tsdproxy.enable=false --user root --entrypoint sh seerr -lc \
     'mkdir -p /app/config/logs && chmod -R a+rwX /app/config' >/dev/null 2>&1; then
     log "Repaired Seerr config volume permissions"
   else
@@ -440,186 +431,67 @@ repair_seerr_config_permissions_with_image() {
   fi
 }
 
-ensure_local_tls_certificate() {
-  local config_root
-  local cert_dir
-  local dynamic_dir
-  local cert_file
-  local key_file
-  local config_file
-  local dynamic_file
-  local host_name
-  local extra_hosts
-  local seerr_host
-  local mdns_aliases
-  local force_https
-  local cert_needs_regen
-  local san_entries
-  local index
-  local host
-  local extra_hosts_array=()
-
-  config_root=$(get_config_root)
-  cert_dir="$config_root/traefik/certs"
-  dynamic_dir="$config_root/traefik/dynamic"
-  cert_file="$cert_dir/local.crt"
-  key_file="$cert_dir/local.key"
-  config_file="$cert_dir/local-openssl.cnf"
-  dynamic_file="$dynamic_dir/local-tls.yml"
-  host_name=$(resolve_env_references "$(get_env_value "$ENV_FILE" "PUBLIC_HOSTNAME" || true)")
-  extra_hosts=$(resolve_env_references "$(get_env_value "$ENV_FILE" "LOCAL_TLS_HOSTS" || true)")
-  generated_aliases=$(resolve_env_references "$(get_env_value "$ENV_FILE" "GENERATED_MDNS_ALIASES" || true)")
-  mdns_aliases=$(resolve_env_references "$(get_env_value "$ENV_FILE" "MDNS_ALIASES" || true)")
-  force_https=$(get_env_value "$ENV_FILE" "FORCE_HTTPS" || printf 'true')
-
-  mkdir -p "$cert_dir" "$dynamic_dir"
-
-  san_entries=("DNS.1 = localhost" "DNS.2 = *.local")
-  index=3
-
-  if [[ -n "$host_name" && "$host_name" != "localhost" ]]; then
-    san_entries+=("DNS.${index} = ${host_name}")
-    index=$((index + 1))
-  fi
-
-  if [[ -n "$extra_hosts" || -n "$generated_aliases" || -n "$mdns_aliases" ]]; then
-    IFS=',' read -r -a extra_hosts_array <<< "${extra_hosts},${generated_aliases},${mdns_aliases}"
-    for host in "${extra_hosts_array[@]}"; do
-      host=$(printf '%s' "$host" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-      [[ -n "$host" ]] || continue
-      [[ "$host" == *'${'* ]] && continue
-      san_entries+=("DNS.${index} = ${host}")
-      index=$((index + 1))
-    done
-  fi
-
-  {
-    printf '[req]\n'
-    printf 'distinguished_name = req_distinguished_name\n'
-    printf 'x509_extensions = v3_req\n'
-    printf 'prompt = no\n\n'
-    printf '[req_distinguished_name]\n'
-    printf 'CN = %s\n\n' "${host_name:-localhost}"
-    printf '[v3_req]\n'
-    printf 'keyUsage = keyEncipherment, dataEncipherment\n'
-    printf 'extendedKeyUsage = serverAuth\n'
-    printf 'subjectAltName = @alt_names\n\n'
-    printf '[alt_names]\n'
-    printf '%s\n' "${san_entries[@]}"
-  } > "$config_file"
-
-  cert_needs_regen=0
-  if [[ ! -f "$cert_file" || ! -f "$key_file" ]] || ! openssl x509 -checkend 2592000 -noout -in "$cert_file" >/dev/null 2>&1; then
-    cert_needs_regen=1
-  elif [[ -n "$host_name" && "$host_name" != "localhost" ]] && ! openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null | grep -F "DNS:${host_name}" >/dev/null; then
-    cert_needs_regen=1
-  else
-    for entry in "${san_entries[@]}"; do
-      host="${entry#*= }"
-      [[ -n "$host" && "$host" != "localhost" && "$host" != "*.local" ]] || continue
-      if ! openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null | grep -F "DNS:${host}" >/dev/null; then
-        cert_needs_regen=1
-        break
-      fi
-    done
-  fi
-
-  if (( cert_needs_regen == 1 )); then
-    openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
-      -keyout "$key_file" \
-      -out "$cert_file" \
-      -config "$config_file" >/dev/null 2>&1
-    chmod 600 "$key_file"
-    log "Generated local Traefik TLS certificate for ${host_name:-localhost}"
-  fi
-
-  cat > "$dynamic_file" <<EOF
-tls:
-  stores:
-    default:
-      defaultCertificate:
-        certFile: /traefik-certs/local.crt
-        keyFile: /traefik-certs/local.key
-EOF
-
-  if [[ "$force_https" =~ ^(1|true|yes|on)$ ]]; then
-    cat >> "$dynamic_file" <<'EOF'
-http:
-  routers:
-    http-to-https:
-      entryPoints:
-        - web
-      rule: PathPrefix(`/`)
-      priority: 2147483646
-      middlewares:
-        - redirect-to-https
-      service: noop@internal
-  middlewares:
-    redirect-to-https:
-      redirectScheme:
-        scheme: https
-        permanent: false
-EOF
-  fi
-}
-
 provision_service_envs() {
   local profiles_csv="$1"
   local timezone_value="$2"
+  local config_root
+
+  config_root="$(get_config_root)"
 
   if profile_enabled "tandoor" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/tandoor/.env.example" "$ROOT_DIR/tandoor/.env"
-    set_if_missing_or_default "$ROOT_DIR/tandoor/.env" "TZ" "America/New_York" "$timezone_value"
-    set_generated_secret_if_blank "$ROOT_DIR/tandoor/.env" "SECRET_KEY"
+    copy_if_missing "$ROOT_DIR/tandoor/.env.example" "$config_root/tandoor/.env"
+    set_if_missing_or_default "$config_root/tandoor/.env" "TZ" "America/New_York" "$timezone_value"
+    set_generated_secret_if_blank "$config_root/tandoor/.env" "SECRET_KEY"
   fi
 
   if profile_enabled "joplin" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/joplin/.env.example" "$ROOT_DIR/joplin/.env"
+    copy_if_missing "$ROOT_DIR/joplin/.env.example" "$config_root/joplin/.env"
   fi
 
   if profile_enabled "vaultwarden" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$ROOT_DIR/vaultwarden/.env"
+    copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$config_root/vaultwarden/.env"
   fi
 
   if profile_enabled "paperless" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/paperless/.env.example" "$ROOT_DIR/paperless/.env"
-    set_if_missing_or_default "$ROOT_DIR/paperless/.env" "PAPERLESS_TIME_ZONE" "America/New_York" "$timezone_value"
-    set_generated_secret_if_blank "$ROOT_DIR/paperless/.env" "PAPERLESS_SECRET_KEY"
+    copy_if_missing "$ROOT_DIR/paperless/.env.example" "$config_root/paperless/.env"
+    set_if_missing_or_default "$config_root/paperless/.env" "PAPERLESS_TIME_ZONE" "America/New_York" "$timezone_value"
+    set_generated_secret_if_blank "$config_root/paperless/.env" "PAPERLESS_SECRET_KEY"
   fi
 
   if profile_enabled "tandoor-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/tandoor/backup.env.example" "$ROOT_DIR/tandoor/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/tandoor/backup.env.example" "$config_root/tandoor/backup.env"
+    set_if_missing_or_default "$config_root/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "joplin-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/joplin/backup.env.example" "$ROOT_DIR/joplin/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/joplin/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/joplin/backup.env.example" "$config_root/joplin/backup.env"
+    set_if_missing_or_default "$config_root/joplin/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "homeassistant-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/homeassistant/backup.env.example" "$ROOT_DIR/homeassistant/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/homeassistant/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/homeassistant/backup.env.example" "$config_root/homeassistant/backup.env"
+    set_if_missing_or_default "$config_root/homeassistant/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "vaultwarden-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/vaultwarden/backup.env.example" "$ROOT_DIR/vaultwarden/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/vaultwarden/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/vaultwarden/backup.env.example" "$config_root/vaultwarden/backup.env"
+    set_if_missing_or_default "$config_root/vaultwarden/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "paperless-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/paperless/backup.env.example" "$ROOT_DIR/paperless/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/paperless/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/paperless/backup.env.example" "$config_root/paperless/backup.env"
+    set_if_missing_or_default "$config_root/paperless/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "immich-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/immich/backup.env.example" "$ROOT_DIR/immich/backup.env"
-    set_if_missing_or_default "$ROOT_DIR/immich/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
+    copy_if_missing "$ROOT_DIR/immich/backup.env.example" "$config_root/immich/backup.env"
+    set_if_missing_or_default "$config_root/immich/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 }
 
 validate_compose() {
   (cd "$ROOT_DIR" && docker compose config --quiet)
+  (cd "$ROOT_DIR" && python3 ./scripts/validate-access-config.py)
   log "Compose configuration is valid"
 }
 
@@ -664,22 +536,13 @@ wait_for_stack() {
 }
 
 print_remaining_manual_steps() {
-  local profiles_csv="$1"
   local pia_user
   local pia_pass
-  local traefik_resolver
-  local host_name
-  local immich_hostname
-  local homeassistant_hostname
-  local adguard_hostname
+  local tailnet_domain
 
   pia_user=$(get_env_value "$ENV_FILE" "PIA_USER" || true)
   pia_pass=$(get_env_value "$ENV_FILE" "PIA_PASS" || true)
-  traefik_resolver=$(get_env_value "$ENV_FILE" "TRAEFIK_CERT_RESOLVER" || true)
-  host_name=$(resolve_env_references "$(get_env_value "$ENV_FILE" "PUBLIC_HOSTNAME" || true)")
-  immich_hostname=$(resolve_env_references "$(get_env_value "$ENV_FILE" "IMMICH_HOSTNAME" || true)")
-  homeassistant_hostname=$(resolve_env_references "$(get_env_value "$ENV_FILE" "HOMEASSISTANT_HOSTNAME" || true)")
-  adguard_hostname=$(resolve_env_references "$(get_env_value "$ENV_FILE" "ADGUARD_HOSTNAME" || true)")
+  tailnet_domain=$(get_env_value "$ENV_FILE" "TAILNET_DOMAIN" || true)
 
   printf '\n'
   log "Remaining manual setup"
@@ -688,24 +551,8 @@ print_remaining_manual_steps() {
     printf '  - Set PIA_USER and PIA_PASS in .env before relying on the VPN-backed qBittorrent path.\n'
   fi
 
-  if [[ -n "$traefik_resolver" ]]; then
-    printf '  - Fill your ACME/DNS provider credentials in .env for TRAEFIK_CERT_RESOLVER=%s.\n' "$traefik_resolver"
-  fi
-
-  if profile_enabled "immich" "$profiles_csv" && [[ -z "$immich_hostname" ]]; then
-    printf '  - Set IMMICH_HOSTNAME in .env before using Immich behind Traefik.\n'
-  fi
-
-  if profile_enabled "homeassistant" "$profiles_csv" && [[ "$homeassistant_hostname" == *localhost* ]]; then
-    printf '  - Replace HOMEASSISTANT_HOSTNAME with a resolvable hostname if you plan to use Home Assistant through Traefik.\n'
-  fi
-
-  if profile_enabled "adguardhome" "$profiles_csv" && [[ "$adguard_hostname" == *localhost* ]]; then
-    printf '  - Replace ADGUARD_HOSTNAME with a resolvable hostname before enabling AdGuard TLS features.\n'
-  fi
-
-  if [[ "$host_name" == "localhost" ]]; then
-    printf "  - Set PUBLIC_HOSTNAME in .env to the LAN hostname clients should use, for example velvet.local.\n"
+  if [[ -z "$tailnet_domain" ]]; then
+    printf '  - Set TAILNET_DOMAIN in .env to the DNS suffix shown in the Tailscale admin console.\n'
   fi
 }
 
@@ -756,9 +603,8 @@ done
 ensure_commands
 ensure_root_env
 apply_root_overrides
-ensure_acme_storage
+ensure_tsdproxy_authkey_secret
 ensure_seerr_config_permissions
-ensure_local_tls_certificate
 clean_appledouble_files
 
 ACTIVE_PROFILES=$(get_env_value "$ENV_FILE" "COMPOSE_PROFILES" || true)

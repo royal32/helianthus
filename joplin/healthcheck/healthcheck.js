@@ -1,12 +1,14 @@
 // Inspired by: https://anthonymineo.com/docker-healthcheck-for-your-node-js-app/
 const http = require('http');
+const baseUrl = new URL(process.env.APP_BASE_URL);
 const options = {
     host: '127.0.0.1',
     port: 22300,
     timeout: 2000,
     path: '/api/ping',
     headers: {
-        'Host': process.env.HOSTNAME,
+        'Host': baseUrl.host,
+        'Origin': baseUrl.origin,
     }
 };
 

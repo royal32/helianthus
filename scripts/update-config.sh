@@ -260,7 +260,7 @@ function update_bazarr_config {
     echo "Updating ${container} configuration..."
     local bazarr_config="${CONFIG_ROOT:-.}"/"$container"/config/config/config.yaml
     until [ -f "$bazarr_config" ]; do sleep 1; done
-    sed -i.bak "s|base_url: ''|base_url: '/$container'|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|base_url: '/$container'|base_url: ''|" "$bazarr_config" && rm "$bazarr_config".bak
     sed -i.bak "s/use_radarr: false/use_radarr: true/" "$bazarr_config" && rm "$bazarr_config".bak
     sed -i.bak "s/use_sonarr: false/use_sonarr: true/" "$bazarr_config" && rm "$bazarr_config".bak
     until [ -f "${CONFIG_ROOT:-.}"/sonarr/config.xml ]; do sleep 1; done
