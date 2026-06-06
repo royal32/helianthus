@@ -147,6 +147,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
 | `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                       |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
+| `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
 | `RECYCLARR_CRON_SCHEDULE`      | Cron schedule used for automatic Recyclarr syncs                                                                                                                                                       | `@daily`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
@@ -341,6 +342,8 @@ It is exposed at `https://seerr.${TAILNET_DOMAIN}` and runs at the root path lik
 `docker compose up` now preconfigures Seerr's Sonarr and Radarr services automatically, syncs Seerr's API key back into `.env` for the Homepage widget, and preconfigures Jellyfin connection details when Jellyfin is enabled.
 
 Seerr uses the Jellyfin admin credentials by default. Set `SEERR_JELLYFIN_ADMIN_USERNAME` and `SEERR_JELLYFIN_ADMIN_PASSWORD` only if Seerr should authenticate with different Jellyfin credentials.
+
+The stack builds Seerr from the official image selected by `SEERR_REF` and applies `seerr/patch-search.mjs`. The patch filters people/actor entries from Seerr's general search API while leaving movie and TV search results unchanged.
 
 When Seerr has no users yet, the automation completes Seerr's initial Jellyfin connection, creates Seerr's Jellyfin API key, marks Seerr's initial setup complete, and syncs that key back into `JELLYFIN_API_KEY` for the Homepage widget. If `JELLYFIN_API_KEY` is already set, rerunning the connection automation stores that key in Seerr's media-server settings.
 

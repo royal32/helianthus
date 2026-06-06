@@ -159,7 +159,11 @@ services:
     profiles:
       - bazarr
   seerr:
-    image: ghcr.io/seerr-team/seerr:latest
+    build:
+      context: ./seerr
+      args:
+        SEERR_REF: ${SEERR_REF:-v3.3.0}
+    image: docker-compose-nas/seerr:${SEERR_REF:-v3.3.0}-no-people-search
     init: true
     container_name: seerr
     environment:

@@ -20,7 +20,9 @@ docker-compose.override.yml
 !/pia-shared/
 /pia-shared/*
 !/pia-shared/portupdate-qbittorrent.sh
-/seerr
+/seerr/*
+!/seerr/Dockerfile
+!/seerr/patch-search.mjs
 /adguardhome/certs
 /adguardhome/conf
 /adguardhome/work
