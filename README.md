@@ -66,7 +66,6 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
 | [Radarr](https://radarr.video)                                     | Movie collection manager for Usenet and BitTorrent users                                                                                                      | [linuxserver/radarr](https://hub.docker.com/r/linuxserver/radarr)                        | `radarr.${TAILNET_DOMAIN}` |
 | [Bazarr](https://www.bazarr.media/)                                | Companion application to Sonarr and Radarr that manages and downloads subtitles                                                                               | [linuxserver/bazarr](https://hub.docker.com/r/linuxserver/bazarr)                        | `bazarr.${TAILNET_DOMAIN}` |
 | [Prowlarr](https://github.com/Prowlarr/Prowlarr)                   | Indexer aggregator for Sonarr and Radarr                                                                                                                      | [linuxserver/prowlarr:latest](https://hub.docker.com/r/linuxserver/prowlarr)             | `prowlarr.${TAILNET_DOMAIN}` |
-| [Recyclarr](https://github.com/recyclarr/recyclarr)               | Optional - Synchronizes selected TRaSH Guide settings to Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=recyclarr`                                      | [recyclarr/recyclarr:8](https://github.com/recyclarr/recyclarr/pkgs/container/recyclarr) |                        |
 | [Profilarr](https://github.com/Dictionarry-Hub/profilarr)         | Optional - Builds, tests, and deploys configurations to Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=profilarr`                                       | [dictionarry-hub/profilarr](https://github.com/Dictionarry-Hub/profilarr/pkgs/container/profilarr) | `profilarr.${TAILNET_DOMAIN}` |
 | [PIA WireGuard VPN](https://github.com/thrnz/docker-wireguard-pia) | Encapsulate qBittorrent traffic in [PIA](https://www.privateinternetaccess.com/) using [WireGuard](https://www.wireguard.com/) with port forwarding.          | [thrnz/docker-wireguard-pia](https://hub.docker.com/r/thrnz/docker-wireguard-pia)        |                        |
 | [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Uses VPN network<br/>Using Libtorrent 1.x                                                                        | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | `qbittorrent.${TAILNET_DOMAIN}` |
@@ -106,7 +105,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, Profilarr, Recyclarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
 
 The only values most users need to fill are:
 
@@ -149,7 +148,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                       |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
 | `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
-| `RECYCLARR_CRON_SCHEDULE`      | Cron schedule used for automatic Recyclarr syncs                                                                                                                                                       | `@daily`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
 | `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
@@ -278,7 +276,7 @@ The committed configuration includes the Standard app profile, FlareSolverr prox
 Preview or apply Prowlarr configuration changes with:
 
 ```shell
-./scripts/configure-app-connections.py --dry-run --skip-qbittorrent --skip-arr --skip-jellyfin --skip-seerr --skip-qui --skip-recyclarr
+./scripts/configure-app-connections.py --dry-run --skip-qbittorrent --skip-arr --skip-jellyfin --skip-seerr --skip-qui
 ./scripts/configure-app-connections.py
 ```
 
@@ -447,17 +445,6 @@ Enable qui by setting `COMPOSE_PROFILES=qui`. It is available at `https://qui.${
 The setup automation creates the qui admin account using `ADMIN_USERNAME` and `GLOBAL_PASSWORD` (which must contain at least eight characters), then creates or updates its qBittorrent instance using `http://vpn:8080` and the effective `QBITTORRENT_USERNAME` and `QBITTORRENT_PASSWORD`. Local Filesystem Access is enabled because the container mounts the qBittorrent download path at `/data/torrents`, allowing qui features such as orphan scans, hardlink detection, and filesystem-based automations.
 
 The stack builds qui from the upstream release selected by `QUI_REF` and applies `qui/visible-external-ip.patch`. This keeps the External IPv4/IPv6 address visible beside its badge in the instance-page status bar while preserving the existing tooltip and incognito-mode blur.
-
-### Recyclarr
-
-Enable Recyclarr by setting `COMPOSE_PROFILES=recyclarr`. It runs on `RECYCLARR_CRON_SCHEDULE` and connects directly to `http://sonarr:8989` and `http://radarr:7878`.
-
-Setup writes the current Arr API keys to the ignored `${CONFIG_ROOT}/recyclarr/secrets.yml` file with private permissions. The committed `recyclarr/recyclarr.yml` is intentionally a non-mutating starter configuration. Add only the TRaSH Guide quality definitions, quality profiles, custom formats, or templates that you want Recyclarr to manage, then preview the result before applying it:
-
-```shell
-docker compose exec recyclarr recyclarr sync --preview
-docker compose exec recyclarr recyclarr sync
-```
 
 ### Profilarr
 

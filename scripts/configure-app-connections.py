@@ -2459,51 +2459,6 @@ def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str
         profilarr_api.update_arr_instance(existing["id"], desired, existing["library_refresh_interval"])
         log(f"Updated Profilarr {arr_service.display_name} connection")
 
-
-def ensure_recyclarr_secrets(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
-    if "recyclarr" not in running_services and not profile_enabled(env, "recyclarr"):
-        return
-
-    sonarr_key = env.get("SONARR_API_KEY", "")
-    radarr_key = env.get("RADARR_API_KEY", "")
-    if not sonarr_key or not radarr_key:
-        log("Skipping Recyclarr secrets because Sonarr or Radarr API key is empty")
-        return
-
-    content = "\n".join(
-        [
-            f"sonarr_base_url: {json.dumps('http://sonarr:8989')}",
-            f"sonarr_api_key: {json.dumps(sonarr_key)}",
-            f"radarr_base_url: {json.dumps('http://radarr:7878')}",
-            f"radarr_api_key: {json.dumps(radarr_key)}",
-            "",
-        ]
-    )
-    config_dir = get_config_root(env) / "recyclarr"
-    secrets_path = config_dir / "secrets.yml"
-
-    if secrets_path.exists() and secrets_path.read_text() == content:
-        log("Recyclarr Sonarr/Radarr secrets already match the desired state")
-        return
-    if dry_run:
-        log(f"[dry-run] Would write {secrets_path}")
-        return
-
-    config_dir.mkdir(parents=True, exist_ok=True)
-    secrets_path.write_text(content)
-
-    uid = int(env.get("USER_ID") or "1000")
-    gid = int(env.get("GROUP_ID") or "1000")
-    try:
-        os.chown(config_dir, uid, gid)
-        os.chown(secrets_path, uid, gid)
-    except PermissionError:
-        pass
-    config_dir.chmod(0o700)
-    secrets_path.chmod(0o600)
-    log("Wrote Recyclarr Sonarr/Radarr secrets")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Automate app-to-app connections for the Docker Compose NAS stack.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything")
@@ -2514,7 +2469,6 @@ def main() -> int:
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")
     parser.add_argument("--skip-qui", action="store_true", help="Skip qui initial setup and qBittorrent connection")
     parser.add_argument("--skip-profilarr", action="store_true", help="Skip Profilarr Sonarr/Radarr connections")
-    parser.add_argument("--skip-recyclarr", action="store_true", help="Skip generated Recyclarr Sonarr/Radarr secrets")
     args = parser.parse_args()
 
     env = parse_env_file(ROOT_DIR / ".env.example")
@@ -2545,8 +2499,6 @@ def main() -> int:
         ensure_profilarr_integrations(env, running_services, args.dry_run)
 
     sync_generated_api_keys(env, args.dry_run)
-    if not args.skip_recyclarr:
-        ensure_recyclarr_secrets(env, running_services, args.dry_run)
     reapply_homepage_label_services(running_services, args.dry_run)
     write_homepage_services(env, running_services, args.dry_run)
 
