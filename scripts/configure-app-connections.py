@@ -441,6 +441,14 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             },
         },
         {
+            "service": "qui",
+            "group": "Download",
+            "name": "qui",
+            "icon": "qui.png",
+            "href": build_external_url(env, "qui") or "/",
+            "description": "qBittorrent web interface",
+        },
+        {
             "service": "cleanuparr",
             "group": "Download",
             "name": "Cleanuparr",

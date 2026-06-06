@@ -241,6 +241,22 @@ services:
       - tsdproxy.dash.label=Autobrr
     profiles:
       - autobrr
+  qui:
+    container_name: qui
+    image: ghcr.io/autobrr/qui:latest
+    restart: always
+    environment:
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/qui:/config
+      - ${DOWNLOAD_ROOT}:/data/torrents
+    labels:
+      - tsdproxy.enable=true
+      - tsdproxy.name=qui
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:7476/http
+      - tsdproxy.dash.label=qui
+    profiles:
+      - qui
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:libtorrentv1
     container_name: qbittorrent

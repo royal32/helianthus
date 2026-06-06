@@ -88,6 +88,7 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
 | [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
 | [Cross-Seed](https://github.com/cross-seed/cross-seed)             | Optional - Cross-Seed is a tool for automating the cross-seeding of torrents<br/>Enable with `COMPOSE_PROFILES=cross-seed`                                    | [cross-seed/cross-seed](https://ghcr.io/cross-seed/cross-seed)                           |                        |
 | [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | `autobrr.${TAILNET_DOMAIN}` |
+| [qui](https://github.com/autobrr/qui)                              | Optional - Modern web interface for managing qBittorrent<br/>Enable with `COMPOSE_PROFILES=qui`                                                               | [autobrr/qui](https://ghcr.io/autobrr/qui)                                                | `qui.${TAILNET_DOMAIN}` |
 | [Suggestarr](github.com/giuseppe99barchetta/SuggestArr)                      | Optional - SuggestArr is a project designed to automate media content recommendations and download requests<br/>Enable with `COMPOSE_PROFILES=suggestarr`                                            | [ciuse99/suggestarr](https://hub.docker.com/r/ciuse99/suggestarr)                                       | `suggestarr.${TAILNET_DOMAIN}` |
 | [Paperless Ngx](https://paperless-ngx.com)                            | Optional - Document management system for organizing and searching your documents<br/>Enable with `COMPOSE_PROFILES=paperless`                                                     | [paperless-ngx/paperless-ngx](https://ghcr.io/paperless-ngx/paperless-ngx)                           | `paperless.${TAILNET_DOMAIN}` |
 
@@ -424,6 +425,12 @@ module.exports = {
   ...
 }
 ```
+
+### qui
+
+Enable qui by setting `COMPOSE_PROFILES=qui`. It is available at `https://qui.${TAILNET_DOMAIN}`.
+
+On first run, create the qui admin account and add the qBittorrent instance using `http://vpn:8080`. The container mounts the qBittorrent download path at `/data/torrents`; enable Local Filesystem Access for the instance to use qui features such as orphan scans, hardlink detection, and filesystem-based automations.
 
 ### SABnzbd
 
