@@ -104,7 +104,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, Sonarr, Radarr, Lidarr, Prowlarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, and Seerr configuration and wiring to match `.env`.
 
 The only values most users need to fill are:
 
@@ -145,6 +145,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
 | `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                       |                                                  |
+| `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
 | `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
@@ -430,7 +431,9 @@ module.exports = {
 
 Enable qui by setting `COMPOSE_PROFILES=qui`. It is available at `https://qui.${TAILNET_DOMAIN}`.
 
-On first run, create the qui admin account and add the qBittorrent instance using `http://vpn:8080`. The container mounts the qBittorrent download path at `/data/torrents`; enable Local Filesystem Access for the instance to use qui features such as orphan scans, hardlink detection, and filesystem-based automations.
+The setup automation creates the qui admin account using `ADMIN_USERNAME` and `GLOBAL_PASSWORD` (which must contain at least eight characters), then creates or updates its qBittorrent instance using `http://vpn:8080` and the effective `QBITTORRENT_USERNAME` and `QBITTORRENT_PASSWORD`. Local Filesystem Access is enabled because the container mounts the qBittorrent download path at `/data/torrents`, allowing qui features such as orphan scans, hardlink detection, and filesystem-based automations.
+
+The stack builds qui from the upstream release selected by `QUI_REF` and applies `qui/visible-external-ip.patch`. This keeps the External IPv4/IPv6 address visible beside its badge in the instance-page status bar while preserving the existing tooltip and incognito-mode blur.
 
 ### SABnzbd
 

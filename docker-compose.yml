@@ -41,6 +41,9 @@ services:
         condition: service_started
       qbittorrent:
         condition: service_started
+      qui:
+        condition: service_healthy
+        required: false
       vpn:
         condition: service_started
       jellyfin:
@@ -243,7 +246,11 @@ services:
       - autobrr
   qui:
     container_name: qui
-    image: ghcr.io/autobrr/qui:latest
+    build:
+      context: ./qui
+      args:
+        QUI_REF: ${QUI_REF:-v1.19.0}
+    image: docker-compose-nas/qui:${QUI_REF:-v1.19.0}-visible-ip
     restart: always
     environment:
       - TZ=${TIMEZONE}

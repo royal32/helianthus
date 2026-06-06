@@ -1,0 +1,32 @@
+diff --git a/web/src/components/torrents/GlobalStatusBar.tsx b/web/src/components/torrents/GlobalStatusBar.tsx
+index f396b54..144257f 100644
+--- a/web/src/components/torrents/GlobalStatusBar.tsx
++++ b/web/src/components/torrents/GlobalStatusBar.tsx
+@@ -77,14 +77,19 @@ const ExternalIPAddress = memo(
+     return (
+       <Tooltip>
+         <TooltipTrigger asChild>
+-          <Badge
+-            variant="outline"
+-            className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
+-            aria-label={`External ${label}`}
+-          >
+-            <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
+-            <span>{label}</span>
+-          </Badge>
++          <span className="inline-flex items-center gap-1.5">
++            <Badge
++              variant="outline"
++              className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
++              aria-label={`External ${label}`}
++            >
++              <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
++              <span>{label}</span>
++            </Badge>
++            <span className="font-mono text-[11px] text-muted-foreground">
++              <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
++            </span>
++          </span>
+         </TooltipTrigger>
+         <TooltipContent>
+           <p className="font-mono text-xs">

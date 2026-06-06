@@ -663,10 +663,17 @@ class JsonClient:
 
 
 class ContainerJsonClient:
-    def __init__(self, service: str, base_url: str, default_headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        service: str,
+        base_url: str,
+        default_headers: dict[str, str] | None = None,
+        cookie_file: str | None = None,
+    ) -> None:
         self.service = service
         self.base_url = base_url.rstrip("/")
         self.default_headers = default_headers or {}
+        self.cookie_file = cookie_file
 
     def request_json(
         self,
@@ -683,13 +690,17 @@ class ContainerJsonClient:
             self.service,
             "curl",
             "-sS",
+        ]
+        if self.cookie_file:
+            command.extend(["-b", self.cookie_file, "-c", self.cookie_file])
+        command.extend([
             "-o",
             "-",
             "-w",
             "\n__STATUS__:%{http_code}",
             "-X",
             method,
-        ]
+        ])
 
         for header_name, header_value in self.default_headers.items():
             command.extend(["-H", f"{header_name}: {header_value}"])
@@ -831,6 +842,47 @@ class QBittorrentClient(JsonClient):
             f"qBittorrent login failed after {wait_timeout}s: "
             f"{last_response or 'service did not become ready in time'}"
         )
+
+
+class QuiApi:
+    def __init__(self) -> None:
+        # The qui image is distroless and has no HTTP client; use a required
+        # shared-network service to reach its un-published API.
+        self.client = ContainerJsonClient(
+            "prowlarr",
+            "http://qui:7476",
+            cookie_file="/tmp/docker-compose-nas-qui-cookies.txt",
+        )
+
+    def setup_required(self) -> bool:
+        response = self.client.request_json("GET", "/api/auth/check-setup") or {}
+        return bool(response.get("setupRequired"))
+
+    def setup(self, username: str, password: str) -> None:
+        self.client.request_json(
+            "POST",
+            "/api/auth/setup",
+            payload={"username": username, "password": password},
+        )
+
+    def login(self, username: str, password: str) -> None:
+        self.client.request_json(
+            "POST",
+            "/api/auth/login",
+            payload={"username": username, "password": password, "remember_me": False},
+        )
+
+    def get_instances(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/instances/") or []
+
+    def create_instance(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", "/api/instances/", payload=payload) or {}
+
+    def update_instance(self, instance_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("PUT", f"/api/instances/{instance_id}/", payload=payload) or {}
+
+    def test_instance(self, instance_id: int) -> dict[str, Any]:
+        return self.client.request_json("POST", f"/api/instances/{instance_id}/test") or {}
 
 
 class ArrApi:
@@ -1667,6 +1719,70 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
             log(f"qBittorrent category {category_name} already matches the desired state")
 
 
+def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if "qui" not in running_services:
+        return
+    if "qbittorrent" not in running_services:
+        log("Skipping qui automation because qBittorrent is not running")
+        return
+    if "prowlarr" not in running_services:
+        log("Skipping qui automation because the shared-network API transport is not running")
+        return
+
+    username = env["ADMIN_USERNAME"]
+    password = env["GLOBAL_PASSWORD"]
+    if len(password) < 8:
+        raise RuntimeError("qui requires GLOBAL_PASSWORD to contain at least 8 characters")
+
+    instance_payload = {
+        "name": "qBittorrent",
+        "host": "http://vpn:8080",
+        "username": env["QBITTORRENT_USERNAME"],
+        "password": env["QBITTORRENT_PASSWORD"],
+        "hasLocalFilesystemAccess": True,
+    }
+
+    if dry_run:
+        log("[dry-run] Would configure qui global credentials and qBittorrent instance")
+        return
+
+    api = QuiApi()
+    if api.setup_required():
+        api.setup(username, password)
+        log("Configured qui global credentials")
+    else:
+        try:
+            api.login(username, password)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "qui login failed with ADMIN_USERNAME/GLOBAL_PASSWORD; "
+                "reset qui or restore the credentials previously used by setup"
+            ) from exc
+
+    instances = api.get_instances()
+    existing = next(
+        (
+            instance
+            for instance in instances
+            if instance.get("name") == instance_payload["name"]
+            or str(instance.get("host", "")).rstrip("/") == instance_payload["host"]
+        ),
+        None,
+    )
+
+    if existing:
+        instance = api.update_instance(int(existing["id"]), instance_payload)
+        log("Updated qui qBittorrent connection")
+    else:
+        instance = api.create_instance(instance_payload)
+        log("Created qui qBittorrent connection")
+
+    connection = api.test_instance(int(instance["id"]))
+    if not connection.get("connected"):
+        raise RuntimeError(f"qui could not connect to qBittorrent: {connection.get('error') or connection}")
+    log("Verified qui qBittorrent connection")
+
+
 def ensure_arr_root_folder(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
     path = env[arr_api.service.root_folder_env]
     ensure_directory(arr_api.service.service_name, path, dry_run)
@@ -1859,6 +1975,7 @@ def main() -> int:
     parser.add_argument("--skip-prowlarr", action="store_true", help="Skip Prowlarr application links")
     parser.add_argument("--skip-jellyfin", action="store_true", help="Skip Jellyfin initial setup and library configuration")
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")
+    parser.add_argument("--skip-qui", action="store_true", help="Skip qui initial setup and qBittorrent connection")
     args = parser.parse_args()
 
     env = parse_env_file(ROOT_DIR / ".env.example")
@@ -1869,6 +1986,9 @@ def main() -> int:
 
     if not args.skip_qbittorrent:
         ensure_qbittorrent_paths_and_categories(env, running_services, args.dry_run)
+
+    if not args.skip_qui:
+        ensure_qui_integration(env, running_services, args.dry_run)
 
     if not args.skip_arr:
         ensure_arr_integrations(env, running_services, args.dry_run)
