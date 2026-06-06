@@ -67,6 +67,7 @@ I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology 
 | [Bazarr](https://www.bazarr.media/)                                | Companion application to Sonarr and Radarr that manages and downloads subtitles                                                                               | [linuxserver/bazarr](https://hub.docker.com/r/linuxserver/bazarr)                        | `bazarr.${TAILNET_DOMAIN}` |
 | [Prowlarr](https://github.com/Prowlarr/Prowlarr)                   | Indexer aggregator for Sonarr and Radarr                                                                                                                      | [linuxserver/prowlarr:latest](https://hub.docker.com/r/linuxserver/prowlarr)             | `prowlarr.${TAILNET_DOMAIN}` |
 | [Recyclarr](https://github.com/recyclarr/recyclarr)               | Optional - Synchronizes selected TRaSH Guide settings to Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=recyclarr`                                      | [recyclarr/recyclarr:8](https://github.com/recyclarr/recyclarr/pkgs/container/recyclarr) |                        |
+| [Profilarr](https://github.com/Dictionarry-Hub/profilarr)         | Optional - Builds, tests, and deploys configurations to Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=profilarr`                                       | [dictionarry-hub/profilarr](https://github.com/Dictionarry-Hub/profilarr/pkgs/container/profilarr) | `profilarr.${TAILNET_DOMAIN}` |
 | [PIA WireGuard VPN](https://github.com/thrnz/docker-wireguard-pia) | Encapsulate qBittorrent traffic in [PIA](https://www.privateinternetaccess.com/) using [WireGuard](https://www.wireguard.com/) with port forwarding.          | [thrnz/docker-wireguard-pia](https://hub.docker.com/r/thrnz/docker-wireguard-pia)        |                        |
 | [qBittorrent](https://www.qbittorrent.org)                         | Bittorrent client with a complete web UI<br/>Uses VPN network<br/>Using Libtorrent 1.x                                                                        | [linuxserver/qbittorrent:libtorrentv1](https://hub.docker.com/r/linuxserver/qbittorrent) | `qbittorrent.${TAILNET_DOMAIN}` |
 | [Unpackerr](https://unpackerr.zip)                                 | Automated Archive Extractions                                                                                                                                 | [golift/unpackerr](https://hub.docker.com/r/golift/unpackerr)                            |                        |
@@ -105,7 +106,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, Recyclarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, Profilarr, Recyclarr, and Seerr configuration and wiring to match `.env`.
 
 The only values most users need to fill are:
 
@@ -457,6 +458,12 @@ Setup writes the current Arr API keys to the ignored `${CONFIG_ROOT}/recyclarr/s
 docker compose exec recyclarr recyclarr sync --preview
 docker compose exec recyclarr recyclarr sync
 ```
+
+### Profilarr
+
+Enable Profilarr by setting `COMPOSE_PROFILES=profilarr`. It is available at `${TSDPROXY_URL_SCHEME}://profilarr.${TAILNET_DOMAIN}`.
+
+Setup creates or updates Profilarr connections for the running Sonarr and Radarr services using their internal Docker URLs, generated API keys, and tailnet external URLs. Profilarr API keys are treated as write-only secrets because Profilarr does not expose them in its live page data.
 
 ### SABnzbd
 

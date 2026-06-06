@@ -381,6 +381,14 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             },
         },
         {
+            "service": "profilarr",
+            "group": "Media",
+            "name": "Profilarr",
+            "icon": "profilarr.png",
+            "href": build_external_url(env, "profilarr") or "/",
+            "description": "Arr profile management",
+        },
+        {
             "service": "qbittorrent",
             "group": "Download",
             "name": "qBittorrent",
@@ -689,6 +697,7 @@ class ContainerJsonClient:
         payload: Any | None = None,
         form_data: dict[str, str] | None = None,
         expect_json: bool = True,
+        accepted_statuses: set[int] | None = None,
     ) -> Any:
         command = [
             "exec",
@@ -725,7 +734,8 @@ class ContainerJsonClient:
             body, _, status_line = output.rpartition("\n__STATUS__:")
             status_code = status_line.strip()
 
-            if result.returncode == 0 and status_code.isdigit() and 200 <= int(status_code) < 300:
+            accepted = accepted_statuses or set(range(200, 300))
+            if result.returncode == 0 and status_code.isdigit() and int(status_code) in accepted:
                 if not expect_json:
                     return body
                 if not body.strip():
@@ -1053,6 +1063,82 @@ class ProwlarrApi:
                 errors.append(str(exc))
 
         raise RuntimeError("\n".join(errors))
+
+
+class ProfilarrApi:
+    def __init__(self, origin: str) -> None:
+        self.client = ContainerJsonClient(
+            "profilarr",
+            "http://127.0.0.1:6868",
+            default_headers={"Origin": origin},
+        )
+
+    def get_arr_instances(self) -> list[dict[str, Any]]:
+        page_data = self.client.request_json("GET", "/arr/__data.json") or {}
+        for node in reversed(page_data.get("nodes", [])):
+            flattened = node.get("data")
+            if not isinstance(flattened, list) or not flattened:
+                continue
+            decoded = decode_sveltekit_data(flattened)
+            if isinstance(decoded, dict) and isinstance(decoded.get("instances"), list):
+                return decoded["instances"]
+        return []
+
+    def create_arr_instance(self, desired: dict[str, Any]) -> None:
+        response = self.client.request_json(
+            "POST",
+            "/arr/new",
+            form_data={
+                "name": desired["name"],
+                "type": desired["type"],
+                "url": desired["url"],
+                "external_url": desired["external_url"] or "",
+                "api_key": desired["api_key"],
+                "tags": json.dumps(desired["tags"]),
+            },
+            accepted_statuses={200, 303},
+        )
+        if response is None:
+            return
+        if isinstance(response, dict) and response.get("type") == "redirect" and response.get("status") == 303:
+            return
+        raise RuntimeError(f"Profilarr did not confirm creation of {desired['name']}")
+
+    def update_arr_instance(self, instance_id: int, desired: dict[str, Any], library_refresh_interval: int) -> None:
+        self.client.request_json(
+            "POST",
+            f"/arr/{instance_id}/settings?/update",
+            form_data={
+                "name": desired["name"],
+                "url": desired["url"],
+                "external_url": desired["external_url"] or "",
+                "api_key": desired["api_key"],
+                "tags": json.dumps(desired["tags"]),
+                "library_refresh_interval": str(library_refresh_interval),
+            },
+            expect_json=False,
+            accepted_statuses={200},
+        )
+
+
+def decode_sveltekit_data(flattened: list[Any]) -> Any:
+    def decode_reference(index: int) -> Any:
+        return decode_value(flattened[index])
+
+    def decode_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: decode_reference(item) if isinstance(item, int) and not isinstance(item, bool) else decode_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                decode_reference(item) if isinstance(item, int) and not isinstance(item, bool) else decode_value(item)
+                for item in value
+            ]
+        return value
+
+    return decode_reference(0)
 
 
 class JellyfinApi(ContainerJsonClient):
@@ -2289,6 +2375,91 @@ def ensure_prowlarr_integrations(env: dict[str, str], running_services: set[str]
         ensure_prowlarr_application(prowlarr_api, arr_service, env, dry_run)
 
 
+def profilarr_instance_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    managed_keys = ("name", "type", "url", "external_url", "tags")
+    return all((existing.get(key) or [] if key == "tags" else existing.get(key)) == desired[key] for key in managed_keys)
+
+
+def wait_for_profilarr_instance(profilarr_api: ProfilarrApi, desired: dict[str, Any]) -> dict[str, Any]:
+    for _ in range(20):
+        instances = profilarr_api.get_arr_instances()
+        existing = next(
+            (
+                instance
+                for instance in instances
+                if instance.get("name") == desired["name"]
+                or (instance.get("type") == desired["type"] and instance.get("url") == desired["url"])
+            ),
+            None,
+        )
+        if existing is not None:
+            return existing
+        time.sleep(1)
+    raise RuntimeError(f"Profilarr instance {desired['name']} was not found after creation")
+
+
+def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if "profilarr" not in running_services:
+        if profile_enabled(env, "profilarr"):
+            log("Skipping Profilarr automation because the service is not running")
+        return
+
+    profilarr_api = ProfilarrApi(build_external_url(env, "profilarr") or "http://127.0.0.1:6868")
+    instances = profilarr_api.get_arr_instances()
+    for arr_service in ARR_SERVICES:
+        if arr_service.service_name not in {"sonarr", "radarr"}:
+            continue
+        if arr_service.service_name not in running_services:
+            continue
+
+        api_key = env.get(arr_service.api_key_env, "")
+        if not api_key:
+            log(f"Skipping Profilarr {arr_service.display_name} connection because {arr_service.api_key_env} is empty")
+            continue
+
+        desired = {
+            "name": arr_service.display_name,
+            "type": arr_service.service_name,
+            "url": arr_service.internal_base_url,
+            "external_url": build_external_url(env, arr_service.service_name) or None,
+            "api_key": api_key,
+            "tags": [],
+        }
+        existing = next(
+            (
+                instance
+                for instance in instances
+                if instance.get("name") == desired["name"]
+                or (instance.get("type") == desired["type"] and instance.get("url") == desired["url"])
+            ),
+            None,
+        )
+        if existing is not None and existing.get("type") != desired["type"]:
+            raise RuntimeError(
+                f"Profilarr instance {desired['name']} exists with type {existing.get('type')}, "
+                f"expected {desired['type']}"
+            )
+
+        if existing is not None and profilarr_instance_matches(existing, desired):
+            log(f"Profilarr {arr_service.display_name} connection already matches the desired state")
+            continue
+
+        if dry_run:
+            action = "update" if existing is not None else "create"
+            log(f"[dry-run] Would {action} Profilarr {arr_service.display_name} connection")
+            continue
+
+        if existing is None:
+            profilarr_api.create_arr_instance(desired)
+            existing = wait_for_profilarr_instance(profilarr_api, desired)
+            instances.append(existing)
+            log(f"Created Profilarr {arr_service.display_name} connection")
+            continue
+
+        profilarr_api.update_arr_instance(existing["id"], desired, existing["library_refresh_interval"])
+        log(f"Updated Profilarr {arr_service.display_name} connection")
+
+
 def ensure_recyclarr_secrets(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
     if "recyclarr" not in running_services and not profile_enabled(env, "recyclarr"):
         return
@@ -2342,6 +2513,7 @@ def main() -> int:
     parser.add_argument("--skip-jellyfin", action="store_true", help="Skip Jellyfin initial setup and library configuration")
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")
     parser.add_argument("--skip-qui", action="store_true", help="Skip qui initial setup and qBittorrent connection")
+    parser.add_argument("--skip-profilarr", action="store_true", help="Skip Profilarr Sonarr/Radarr connections")
     parser.add_argument("--skip-recyclarr", action="store_true", help="Skip generated Recyclarr Sonarr/Radarr secrets")
     args = parser.parse_args()
 
@@ -2368,6 +2540,9 @@ def main() -> int:
 
     if not args.skip_seerr:
         ensure_seerr_integrations(env, running_services, args.dry_run)
+
+    if not args.skip_profilarr:
+        ensure_profilarr_integrations(env, running_services, args.dry_run)
 
     sync_generated_api_keys(env, args.dry_run)
     if not args.skip_recyclarr:

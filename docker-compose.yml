@@ -224,6 +224,43 @@ services:
         condition: service_started
     profiles:
       - recyclarr
+  profilarr:
+    image: ghcr.io/dictionarry-hub/profilarr:latest
+    container_name: profilarr
+    restart: unless-stopped
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - ORIGIN=${TSDPROXY_URL_SCHEME:-https}://profilarr.${TAILNET_DOMAIN}
+      - PARSER_HOST=profilarr-parser
+      - PARSER_PORT=5000
+      - AUTH=OFF
+    volumes:
+      - ${CONFIG_ROOT:-.}/profilarr:/config
+    depends_on:
+      profilarr-parser:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:6868/arr"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    labels:
+      - tsdproxy.enable=true
+      - tsdproxy.name=profilarr
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:6868/http
+      - tsdproxy.dash.label=Profilarr
+    profiles:
+      - profilarr
+  profilarr-parser:
+    image: ghcr.io/dictionarry-hub/profilarr-parser:latest
+    container_name: profilarr-parser
+    restart: unless-stopped
+    expose:
+      - "5000"
+    profiles:
+      - profilarr
   suggestarr:
     image: ciuse99/suggestarr:latest
     container_name: suggestarr
