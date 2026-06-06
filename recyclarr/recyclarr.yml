@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://schemas.recyclarr.dev/v8/config-schema.json
+#
+# This starter configuration connects Recyclarr without changing Sonarr or
+# Radarr. Add the quality definitions, quality profiles, custom formats, or
+# guide-backed templates that you want Recyclarr to manage.
+
+sonarr:
+  sonarr:
+    base_url: !secret sonarr_base_url
+    api_key: !secret sonarr_api_key
+
+radarr:
+  radarr:
+    base_url: !secret radarr_base_url
+    api_key: !secret radarr_api_key

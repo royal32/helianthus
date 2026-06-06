@@ -199,6 +199,27 @@ services:
       - tsdproxy.name=prowlarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:9696/http
       - tsdproxy.dash.label=Prowlarr
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:8
+    container_name: recyclarr
+    user: ${USER_ID}:${GROUP_ID}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - TZ=${TIMEZONE}
+      - CRON_SCHEDULE=${RECYCLARR_CRON_SCHEDULE:-@daily}
+    volumes:
+      - ${CONFIG_ROOT:-.}/recyclarr:/config
+      - ./recyclarr/recyclarr.yml:/config/recyclarr.yml:ro
+    depends_on:
+      sonarr:
+        condition: service_started
+      radarr:
+        condition: service_started
+    profiles:
+      - recyclarr
   suggestarr:
     image: ciuse99/suggestarr:latest
     container_name: suggestarr
