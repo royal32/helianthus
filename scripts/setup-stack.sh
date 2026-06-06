@@ -186,6 +186,39 @@ set_if_missing_or_default() {
   fi
 }
 
+set_if_changed() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local current_value
+
+  current_value=$(get_env_value "$file" "$key" || true)
+  if [[ "$current_value" != "$value" ]]; then
+    set_env_value "$file" "$key" "$value"
+    log "Set $key=$value"
+  fi
+}
+
+sync_tsdproxy_access_mode() {
+  local disable_tls
+
+  disable_tls=$(get_env_value "$ENV_FILE" "TSDPROXY_DISABLE_TLS" || printf 'false')
+  disable_tls=$(printf '%s' "$disable_tls" | tr '[:upper:]' '[:lower:]')
+  case "$disable_tls" in
+    1|true|yes|on)
+      set_if_changed "$ENV_FILE" "TSDPROXY_ACCESS_MODE" "80/http"
+      set_if_changed "$ENV_FILE" "TSDPROXY_URL_SCHEME" "http"
+      ;;
+    0|false|no|off|"")
+      set_if_changed "$ENV_FILE" "TSDPROXY_ACCESS_MODE" "443/https"
+      set_if_changed "$ENV_FILE" "TSDPROXY_URL_SCHEME" "https"
+      ;;
+    *)
+      die "TSDPROXY_DISABLE_TLS must be true or false"
+      ;;
+  esac
+}
+
 copy_if_missing() {
   local source_file="$1"
   local target_file="$2"
@@ -308,6 +341,7 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "CONFIG_ROOT" "." "./runtime"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DASHBOARD_PORT" "" "8080"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" "" "./secrets/tsdproxy_authkey"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DISABLE_TLS" "" "false"
 
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then
@@ -603,6 +637,7 @@ done
 ensure_commands
 ensure_root_env
 apply_root_overrides
+sync_tsdproxy_access_mode
 ensure_tsdproxy_authkey_secret
 ensure_seerr_config_permissions
 clean_appledouble_files

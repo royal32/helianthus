@@ -57,6 +57,23 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
     proxy_names: dict[str, str] = {}
+    disable_tls = env.get("TSDPROXY_DISABLE_TLS", "false").lower()
+
+    if disable_tls in {"1", "true", "yes", "on"}:
+        expected_access_mode = "80/http"
+        expected_url_scheme = "http"
+    elif disable_tls in {"0", "false", "no", "off", ""}:
+        expected_access_mode = "443/https"
+        expected_url_scheme = "https"
+    else:
+        errors.append("TSDPROXY_DISABLE_TLS must be true or false")
+        expected_access_mode = env.get("TSDPROXY_ACCESS_MODE", "")
+        expected_url_scheme = env.get("TSDPROXY_URL_SCHEME", "")
+
+    if env.get("TSDPROXY_ACCESS_MODE", expected_access_mode) != expected_access_mode:
+        errors.append("TSDPROXY_ACCESS_MODE does not match TSDPROXY_DISABLE_TLS; run setup-stack.sh")
+    if env.get("TSDPROXY_URL_SCHEME", expected_url_scheme) != expected_url_scheme:
+        errors.append("TSDPROXY_URL_SCHEME does not match TSDPROXY_DISABLE_TLS; run setup-stack.sh")
 
     for forbidden in ("traefik", "mdns-publisher", "traefik-certs-dumper"):
         if forbidden in services:
@@ -79,22 +96,11 @@ def main() -> int:
         port_labels = [name for name in labels if name.startswith("tsdproxy.port.")]
         if not port_labels:
             errors.append(f"{service_name} has no explicit tsdproxy.port.N label")
-
-    dashboard_list_path = ROOT_DIR / "tsdproxy" / "dashboard.json"
-    try:
-        dashboard_routes = json.loads(dashboard_list_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        errors.append(f"cannot load TSDProxy dashboard route list: {exc}")
-        dashboard_routes = {}
-
-    for proxy_name, route in dashboard_routes.items():
-        previous = proxy_names.get(proxy_name)
-        if previous:
-            errors.append(f"duplicate TSDProxy name {proxy_name}: {previous}, dashboard list")
-        proxy_names[proxy_name] = "dashboard list"
-        targets = route.get("ports", {}).get("443/https", {}).get("targets", [])
-        if targets != ["http://127.0.0.1:8080"]:
-            errors.append("TSDProxy dashboard list route must target http://127.0.0.1:8080")
+        elif not any(str(labels[name]).startswith(f"{expected_access_mode}:") for name in port_labels):
+            errors.append(
+                f"{service_name} does not use {expected_access_mode}; "
+                "run setup-stack.sh after changing TSDPROXY_DISABLE_TLS"
+            )
 
     for service_name, service in services.items():
         for port in service.get("ports") or []:

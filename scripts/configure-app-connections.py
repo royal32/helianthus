@@ -568,7 +568,8 @@ def build_external_url(env: dict[str, str], service_name: str) -> str:
     tailnet_domain = env.get("TAILNET_DOMAIN", "")
     if not tailnet_domain or "${" in tailnet_domain:
         return ""
-    return f"https://{service_name}.{tailnet_domain}"
+    scheme = env.get("TSDPROXY_URL_SCHEME", "https")
+    return f"{scheme}://{service_name}.{tailnet_domain}"
 
 
 def run_compose(args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:

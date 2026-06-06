@@ -18,7 +18,7 @@ services:
         required: false
     environment:
       PAPERLESS_REDIS: redis://paperless-broker:6379
-      PAPERLESS_URL: https://paperless.${TAILNET_DOMAIN}
+      PAPERLESS_URL: ${TSDPROXY_URL_SCHEME:-https}://paperless.${TAILNET_DOMAIN}
       PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-${ADMIN_USERNAME:-admin}}
       PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:-${GLOBAL_PASSWORD:-adminadmin}}
       USERMAP_UID: ${USER_ID}
@@ -26,7 +26,7 @@ services:
     labels:
       - tsdproxy.enable=true
       - tsdproxy.name=paperless
-      - tsdproxy.port.1=443/https:8000/http
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8000/http
       - tsdproxy.dash.label=Paperless
     profiles:
       - paperless

@@ -23,7 +23,7 @@ services:
     labels:
       - tsdproxy.enable=true
       - tsdproxy.name=immich
-      - tsdproxy.port.1=443/https:2283/http
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:2283/http
       - tsdproxy.dash.label=Immich
     profiles:
       - immich

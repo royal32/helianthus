@@ -12,7 +12,7 @@ services:
         condition: service_completed_successfully
     environment:
       - APP_PORT=22300
-      - APP_BASE_URL=https://joplin.${TAILNET_DOMAIN}
+      - APP_BASE_URL=${TSDPROXY_URL_SCHEME:-https}://joplin.${TAILNET_DOMAIN}
       - DB_CLIENT=sqlite3
       - SQLITE_DATABASE=/database/joplin.db
       - STORAGE_DRIVER=Type=Filesystem; Path=/storage
@@ -29,7 +29,7 @@ services:
     labels:
       - tsdproxy.enable=true
       - tsdproxy.name=joplin
-      - tsdproxy.port.1=443/https:22300/http
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:22300/http
       - tsdproxy.dash.label=Joplin
     profiles:
       - joplin

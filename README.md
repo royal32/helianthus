@@ -148,6 +148,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
 | `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
 | `TSDPROXY_DASHBOARD_PORT`      | Localhost-only diagnostic port for the TSDProxy dashboard.                                                                                                                                             | `8080`                                           |
+| `TSDPROXY_DISABLE_TLS`         | Set `true` in test environments to expose services over tailnet HTTP without requesting TLS certificates. Run `setup-stack.sh` after changing it.                                                       | `false`                                          |
 | `ADGUARD_USERNAME`             | Optional - AdGuard Home username override                                                                                                                                                              |                                                  |
 | `ADGUARD_PASSWORD`             | Optional - AdGuard Home password override                                                                                                                                                              |                                                  |
 | `QBITTORRENT_USERNAME`         | Optional qBittorrent username override                                                                                                                                                                 |                                                  |
@@ -344,7 +345,7 @@ The values used are:
 
 ## Tailscale Access
 
-TSDProxy is the only HTTP access layer. It discovers containers with `tsdproxy.enable=true`, creates one private Tailscale node per service, terminates Tailscale HTTPS, and proxies directly to the service over the shared Docker network. Traefik, mDNS aliases, subpath routing, and public DNS certificates are not used.
+TSDProxy is the only HTTP access layer. It discovers containers with `tsdproxy.enable=true`, creates one private Tailscale node per service, and proxies directly to the service over the shared Docker network. By default it terminates Tailscale HTTPS. Traefik, mDNS aliases, subpath routing, and public DNS certificates are not used.
 
 Create a reusable Tailscale auth key and place it in the ignored secret file:
 
@@ -363,11 +364,22 @@ https://radarr.<tailnet-domain>
 https://jellyfin.<tailnet-domain>
 ```
 
-The TSDProxy dashboard is available privately at `https://tsdproxy-dashboard.<tailnet-domain>`. Its diagnostic host port is bound only to `127.0.0.1:8080` by default.
+The TSDProxy dashboard is available privately at `https://tsdproxy-dashboard.<tailnet-domain>` by default, or the equivalent `http://` URL when TLS is disabled. Its diagnostic host port is bound only to `127.0.0.1:8080` by default.
 
 Container-to-container integrations must continue using Docker DNS names such as `http://sonarr:8989`; do not use Tailscale URLs for internal traffic. Run `python3 scripts/validate-access-config.py` to check for duplicate TSDProxy names, stale Traefik labels, and unsafe proxy port bindings.
 
 Enable new optional profiles in small batches. Each new HTTPS hostname requires a Tailscale/Let's Encrypt certificate, and requesting many first-time certificates together can temporarily hit issuance limits. Existing nodes and certificates are persisted under `CONFIG_ROOT/tsdproxy/data`.
+
+For disposable test environments, disable TLS certificate requests:
+
+```shell
+./scripts/setup-stack.sh --set TSDPROXY_DISABLE_TLS=true
+```
+
+This switches every TSDProxy route and generated external application URL to
+`http://<service>.<tailnet-domain>`. Tailnet traffic remains encrypted by
+Tailscale, but browsers do not treat these HTTP URLs as secure contexts. Set the
+flag back to `false` and rerun setup to restore HTTPS.
 
 ## Optional Services
 

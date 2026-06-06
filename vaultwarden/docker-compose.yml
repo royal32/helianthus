@@ -9,14 +9,14 @@ services:
       - path: ${CONFIG_ROOT:-.}/vaultwarden/.env
         required: false
     environment:
-      - DOMAIN=https://vaultwarden.${TAILNET_DOMAIN}
+      - DOMAIN=${TSDPROXY_URL_SCHEME:-https}://vaultwarden.${TAILNET_DOMAIN}
     depends_on:
       stack-bootstrap:
         condition: service_completed_successfully
     labels:
       - tsdproxy.enable=true
       - tsdproxy.name=vaultwarden
-      - tsdproxy.port.1=443/https:80/http
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:80/http
       - tsdproxy.dash.label=Vaultwarden
     profiles:
       - vaultwarden
