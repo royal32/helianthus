@@ -3,6 +3,7 @@
 .idea
 docker-compose.override.yml
 /runtime
+/runtime_data
 /homepage/logs
 /homepage/*.yaml
 /homepage/*.css
