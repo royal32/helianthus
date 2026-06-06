@@ -22,6 +22,7 @@ from urllib import error, parse, request
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+PROWLARR_CONFIG_PATH = ROOT_DIR / "config" / "prowlarr.json"
 SSL_CONTEXT = ssl._create_unverified_context()
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(:-([^}]*))?\}")
 SEERR_MEDIA_SERVER_TYPE_JELLYFIN = 2
@@ -989,6 +990,27 @@ class ProwlarrApi:
     def get_applications(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", "/api/v1/applications") or []
 
+    def get_app_profiles(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/appprofile") or []
+
+    def get_tags(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/tag") or []
+
+    def create_tag(self, label: str) -> dict[str, Any]:
+        return self.client.request_json("POST", "/api/v1/tag", payload={"label": label}) or {}
+
+    def get_indexer_proxies(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/indexerProxy") or []
+
+    def get_indexer_proxy_schema(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/indexerProxy/schema") or []
+
+    def get_indexers(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/indexer") or []
+
+    def get_indexer_schema(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/v1/indexer/schema") or []
+
     def configure_authentication(self, username: str, password: str) -> None:
         host_config = self.client.request_json("GET", "/api/v1/config/host")
         host_config.update(
@@ -1006,12 +1028,24 @@ class ProwlarrApi:
         return self.client.request_json("GET", "/api/v1/applications/schema") or []
 
     def upsert_application(self, payload: dict[str, Any], item_id: int | None) -> None:
+        self._upsert("/api/v1/applications", payload, item_id)
+
+    def upsert_app_profile(self, payload: dict[str, Any], item_id: int | None) -> None:
+        self._upsert("/api/v1/appprofile", payload, item_id)
+
+    def upsert_indexer_proxy(self, payload: dict[str, Any], item_id: int | None) -> None:
+        self._upsert("/api/v1/indexerProxy", payload, item_id)
+
+    def upsert_indexer(self, payload: dict[str, Any], item_id: int | None) -> None:
+        self._upsert("/api/v1/indexer", payload, item_id)
+
+    def _upsert(self, base_path: str, payload: dict[str, Any], item_id: int | None) -> None:
         if item_id is None:
-            self.client.request_json("POST", "/api/v1/applications", payload=payload)
+            self.client.request_json("POST", base_path, payload=payload)
             return
 
         errors: list[str] = []
-        for path in (f"/api/v1/applications/{item_id}", "/api/v1/applications"):
+        for path in (f"{base_path}/{item_id}", base_path):
             try:
                 self.client.request_json("PUT", path, payload=payload)
                 return
@@ -1914,7 +1948,10 @@ def ensure_prowlarr_application(
     if existing is not None:
         desired_values = field_value_map(payload["fields"])
         current_values = field_value_map(existing.get("fields", []))
-        same_fields = all(current_values.get(name) == value for name, value in desired_values.items())
+        same_fields = all(
+            name == "apiKey" or current_values.get(name) == value
+            for name, value in desired_values.items()
+        )
         if existing.get("enable") and existing.get("syncLevel") == payload["syncLevel"] and same_fields:
             log(f"Prowlarr link for {arr_service.display_name} already matches the desired state")
             return
@@ -1926,6 +1963,285 @@ def ensure_prowlarr_application(
 
     prowlarr_api.upsert_application(payload, None)
     log(f"Created Prowlarr link for {arr_service.display_name}")
+
+
+def load_prowlarr_config(env: dict[str, str]) -> dict[str, Any]:
+    if not PROWLARR_CONFIG_PATH.exists():
+        return {}
+
+    config = json.loads(PROWLARR_CONFIG_PATH.read_text())
+    if not isinstance(config, dict):
+        raise RuntimeError(f"{PROWLARR_CONFIG_PATH} must contain a JSON object")
+
+    def expand(value: Any) -> Any:
+        if isinstance(value, str):
+            return ENV_VAR_PATTERN.sub(lambda match: env.get(match.group(1), match.group(3) or ""), value)
+        if isinstance(value, list):
+            return [expand(item) for item in value]
+        if isinstance(value, dict):
+            return {key: expand(item) for key, item in value.items()}
+        return value
+
+    return expand(config)
+
+
+def ensure_schema_fields(schema_fields: list[dict[str, Any]], overrides: dict[str, Any], resource_name: str) -> None:
+    available = {field["name"] for field in schema_fields}
+    unknown = sorted(set(overrides) - available)
+    if unknown:
+        raise RuntimeError(f"{resource_name} contains fields not present in the Prowlarr schema: {', '.join(unknown)}")
+
+
+def managed_prowlarr_resource_matches(
+    existing: dict[str, Any],
+    payload: dict[str, Any],
+    managed_keys: tuple[str, ...],
+    managed_fields: dict[str, Any] | None = None,
+) -> bool:
+    for key in managed_keys:
+        current = existing.get(key)
+        desired = payload.get(key)
+        if key == "tags":
+            if set(current or []) != set(desired or []):
+                return False
+        elif current != desired:
+            return False
+
+    if managed_fields is None:
+        return True
+
+    current_fields = field_value_map(existing.get("fields", []))
+    return all(current_fields.get(name) == value for name, value in managed_fields.items())
+
+
+def ensure_prowlarr_tags(
+    prowlarr_api: ProwlarrApi,
+    desired_tags: list[str],
+    dry_run: bool,
+) -> dict[str, int]:
+    existing_tags = prowlarr_api.get_tags()
+    tag_ids = {tag["label"]: tag["id"] for tag in existing_tags}
+
+    for label in desired_tags:
+        if label in tag_ids:
+            log(f"Prowlarr tag {label} already exists")
+            continue
+        if dry_run:
+            tag_ids[label] = -1
+            log(f"[dry-run] Would create Prowlarr tag {label}")
+            continue
+
+        created = prowlarr_api.create_tag(label)
+        if "id" not in created:
+            raise RuntimeError(f"Prowlarr did not return an id after creating tag {label}")
+        tag_ids[label] = created["id"]
+        log(f"Created Prowlarr tag {label}")
+
+    return tag_ids
+
+
+def ensure_prowlarr_app_profiles(
+    prowlarr_api: ProwlarrApi,
+    desired_profiles: list[dict[str, Any]],
+    dry_run: bool,
+) -> dict[str, int]:
+    existing_profiles = prowlarr_api.get_app_profiles()
+    profile_ids = {profile["name"]: profile["id"] for profile in existing_profiles}
+
+    for desired in desired_profiles:
+        name = desired["name"]
+        existing = next((profile for profile in existing_profiles if profile.get("name") == name), None)
+        if existing is not None and all(existing.get(key) == value for key, value in desired.items()):
+            log(f"Prowlarr app profile {name} already matches the desired state")
+            continue
+
+        if dry_run:
+            profile_ids.setdefault(name, -1)
+            action = "update" if existing is not None else "create"
+            log(f"[dry-run] Would {action} Prowlarr app profile {name}")
+            continue
+
+        payload = dict(desired)
+        item_id = existing.get("id") if existing is not None else None
+        if item_id is not None:
+            payload["id"] = item_id
+        prowlarr_api.upsert_app_profile(payload, item_id)
+        if item_id is None:
+            refreshed = next(
+                (profile for profile in prowlarr_api.get_app_profiles() if profile.get("name") == name),
+                None,
+            )
+            if refreshed is None:
+                raise RuntimeError(f"Prowlarr app profile {name} was not found after creation")
+            profile_ids[name] = refreshed["id"]
+            existing_profiles.append(refreshed)
+            log(f"Created Prowlarr app profile {name}")
+        else:
+            profile_ids[name] = item_id
+            log(f"Updated Prowlarr app profile {name}")
+
+    return profile_ids
+
+
+def desired_tag_ids(resource: dict[str, Any], tag_ids: dict[str, int]) -> list[int]:
+    labels = resource.get("tags", [])
+    missing = sorted(label for label in labels if label not in tag_ids)
+    if missing:
+        raise RuntimeError(f"Unknown Prowlarr tags referenced by {resource['name']}: {', '.join(missing)}")
+    return [tag_ids[label] for label in labels]
+
+
+def ensure_prowlarr_indexer_proxies(
+    prowlarr_api: ProwlarrApi,
+    desired_proxies: list[dict[str, Any]],
+    tag_ids: dict[str, int],
+    dry_run: bool,
+) -> None:
+    existing_proxies = prowlarr_api.get_indexer_proxies()
+    schemas = prowlarr_api.get_indexer_proxy_schema()
+
+    for desired in desired_proxies:
+        name = desired["name"]
+        schema = schema_by_implementation(schemas, desired["implementation"])
+        field_overrides = desired.get("fields", {})
+        ensure_schema_fields(schema["fields"], field_overrides, f"Prowlarr indexer proxy {name}")
+        payload = {
+            "name": name,
+            "implementationName": schema.get("implementationName", desired["implementation"]),
+            "implementation": schema["implementation"],
+            "configContract": schema["configContract"],
+            "fields": apply_field_overrides(schema["fields"], field_overrides),
+            "tags": desired_tag_ids(desired, tag_ids),
+            "onHealthIssue": schema.get("onHealthIssue", False),
+            "includeHealthWarnings": schema.get("includeHealthWarnings", False),
+        }
+        existing = next(
+            (
+                proxy
+                for proxy in existing_proxies
+                if proxy.get("name") == name or proxy.get("implementation") == desired["implementation"]
+            ),
+            None,
+        )
+        if existing is not None and managed_prowlarr_resource_matches(
+            existing,
+            payload,
+            ("name", "implementation", "tags"),
+            field_overrides,
+        ):
+            log(f"Prowlarr indexer proxy {name} already matches the desired state")
+            continue
+
+        if dry_run:
+            action = "update" if existing is not None else "create"
+            log(f"[dry-run] Would {action} Prowlarr indexer proxy {name}")
+            continue
+
+        item_id = existing.get("id") if existing is not None else None
+        if item_id is not None:
+            payload["id"] = item_id
+        prowlarr_api.upsert_indexer_proxy(payload, item_id)
+        log(f"{'Updated' if item_id is not None else 'Created'} Prowlarr indexer proxy {name}")
+
+
+def prowlarr_indexer_schema(
+    schemas: list[dict[str, Any]],
+    definition_name: str,
+    implementation: str,
+) -> dict[str, Any]:
+    for schema in schemas:
+        if schema.get("definitionName") == definition_name and schema.get("implementation") == implementation:
+            return copy.deepcopy(schema)
+    raise RuntimeError(f"Prowlarr indexer schema {definition_name} ({implementation}) was not found")
+
+
+def ensure_prowlarr_indexers(
+    prowlarr_api: ProwlarrApi,
+    desired_indexers: list[dict[str, Any]],
+    tag_ids: dict[str, int],
+    profile_ids: dict[str, int],
+    dry_run: bool,
+) -> None:
+    existing_indexers = prowlarr_api.get_indexers()
+    schemas = prowlarr_api.get_indexer_schema()
+
+    for desired in desired_indexers:
+        name = desired["name"]
+        profile_name = desired["appProfile"]
+        if profile_name not in profile_ids:
+            raise RuntimeError(f"Unknown Prowlarr app profile referenced by {name}: {profile_name}")
+
+        schema = prowlarr_indexer_schema(schemas, desired["definitionName"], desired["implementation"])
+        field_overrides = desired.get("fields", {})
+        ensure_schema_fields(schema["fields"], field_overrides, f"Prowlarr indexer {name}")
+        payload = {
+            "name": name,
+            "enable": desired.get("enable", schema.get("enable", True)),
+            "redirect": desired.get("redirect", schema.get("redirect", False)),
+            "priority": desired.get("priority", schema.get("priority", 25)),
+            "appProfileId": profile_ids[profile_name],
+            "downloadClientId": desired.get("downloadClientId", schema.get("downloadClientId", 0)),
+            "implementationName": schema.get("implementationName", name),
+            "implementation": schema["implementation"],
+            "configContract": schema["configContract"],
+            "fields": apply_field_overrides(schema["fields"], field_overrides),
+            "tags": desired_tag_ids(desired, tag_ids),
+        }
+        existing = next(
+            (
+                indexer
+                for indexer in existing_indexers
+                if indexer.get("name") == name
+                or (
+                    indexer.get("definitionName") == desired["definitionName"]
+                    and indexer.get("implementation") == desired["implementation"]
+                )
+            ),
+            None,
+        )
+        if existing is not None and managed_prowlarr_resource_matches(
+            existing,
+            payload,
+            ("name", "enable", "priority", "appProfileId", "downloadClientId", "implementation", "tags"),
+            field_overrides,
+        ):
+            log(f"Prowlarr indexer {name} already matches the desired state")
+            continue
+
+        if dry_run:
+            action = "update" if existing is not None else "create"
+            log(f"[dry-run] Would {action} Prowlarr indexer {name}")
+            continue
+
+        item_id = existing.get("id") if existing is not None else None
+        if item_id is not None:
+            payload["id"] = item_id
+        prowlarr_api.upsert_indexer(payload, item_id)
+        log(f"{'Updated' if item_id is not None else 'Created'} Prowlarr indexer {name}")
+
+
+def ensure_prowlarr_config_resources(
+    prowlarr_api: ProwlarrApi,
+    env: dict[str, str],
+    running_services: set[str],
+    dry_run: bool,
+) -> None:
+    config = load_prowlarr_config(env)
+    if not config:
+        log(f"Skipping Prowlarr resource automation because {PROWLARR_CONFIG_PATH.relative_to(ROOT_DIR)} is absent")
+        return
+
+    tag_ids = ensure_prowlarr_tags(prowlarr_api, config.get("tags", []), dry_run)
+    profile_ids = ensure_prowlarr_app_profiles(prowlarr_api, config.get("appProfiles", []), dry_run)
+    desired_proxies = []
+    for proxy in config.get("indexerProxies", []):
+        required_service = proxy.get("requiresService")
+        if required_service and required_service not in running_services:
+            log(f"Skipping Prowlarr indexer proxy {proxy['name']} because {required_service} is not running")
+            continue
+        desired_proxies.append(proxy)
+    ensure_prowlarr_indexer_proxies(prowlarr_api, desired_proxies, tag_ids, dry_run)
+    ensure_prowlarr_indexers(prowlarr_api, config.get("indexers", []), tag_ids, profile_ids, dry_run)
 
 
 def ensure_arr_integrations(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
@@ -1964,6 +2280,7 @@ def ensure_prowlarr_integrations(env: dict[str, str], running_services: set[str]
     else:
         prowlarr_api.configure_authentication(env["PROWLARR_USERNAME"], env["PROWLARR_PASSWORD"])
         log("Configured Prowlarr forms authentication")
+    ensure_prowlarr_config_resources(prowlarr_api, env, running_services, dry_run)
     for arr_service in ARR_SERVICES:
         if arr_service.service_name not in running_services:
             continue
@@ -2021,7 +2338,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything")
     parser.add_argument("--skip-qbittorrent", action="store_true", help="Skip qBittorrent path and category updates")
     parser.add_argument("--skip-arr", action="store_true", help="Skip Sonarr/Radarr/Lidarr root folders and download clients")
-    parser.add_argument("--skip-prowlarr", action="store_true", help="Skip Prowlarr application links")
+    parser.add_argument("--skip-prowlarr", action="store_true", help="Skip Prowlarr resources and application links")
     parser.add_argument("--skip-jellyfin", action="store_true", help="Skip Jellyfin initial setup and library configuration")
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")
     parser.add_argument("--skip-qui", action="store_true", help="Skip qui initial setup and qBittorrent connection")

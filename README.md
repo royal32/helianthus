@@ -269,9 +269,16 @@ Because all the networking for qBittorrent takes place in the VPN container, the
 
 ## Prowlarr
 
-The indexers are configured through Prowlarr. They synchronize automatically to Radarr and Sonarr.
+Prowlarr indexers, tags, app profiles, and indexer proxies are declared in `config/prowlarr.json`. The setup automation creates missing resources and updates managed resources by name without deleting additional resources created manually.
 
-`docker compose up` now adds the Prowlarr application links for Sonarr, Radarr, and Lidarr automatically when those services are running.
+The committed configuration includes the Standard app profile, FlareSolverr proxy and tag, and the approved public indexers. The FlareSolverr proxy is applied only while the optional `flaresolverr` service is running. `docker compose up` also adds the Prowlarr application links for Sonarr, Radarr, and Lidarr automatically when those services are running.
+
+Preview or apply Prowlarr configuration changes with:
+
+```shell
+./scripts/configure-app-connections.py --dry-run --skip-qbittorrent --skip-arr --skip-jellyfin --skip-seerr --skip-qui --skip-recyclarr
+./scripts/configure-app-connections.py
+```
 
 The internal Prowlarr server is `http://prowlarr:9696`, Radarr is `http://radarr:7878`, Sonarr is `http://sonarr:8989`, and Lidarr is `http://lidarr:8686`.
 

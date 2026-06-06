@@ -1,0 +1,113 @@
+{
+  "appProfiles": [
+    {
+      "name": "Standard",
+      "enableRss": true,
+      "enableAutomaticSearch": true,
+      "enableInteractiveSearch": true,
+      "minimumSeeders": 1
+    }
+  ],
+  "tags": [
+    "flaresolverr"
+  ],
+  "indexerProxies": [
+    {
+      "name": "FlareSolverr",
+      "implementation": "FlareSolverr",
+      "requiresService": "flaresolverr",
+      "tags": [
+        "flaresolverr"
+      ],
+      "fields": {
+        "host": "http://flaresolverr:8191/",
+        "requestTimeout": 60
+      }
+    }
+  ],
+  "indexers": [
+    {
+      "name": "1337x",
+      "definitionName": "1337x",
+      "implementation": "Cardigann",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "tags": [
+        "flaresolverr"
+      ],
+      "fields": {
+        "definitionFile": "1337x",
+        "uploader": "",
+        "downloadlink": 0,
+        "downloadlink2": 1,
+        "disablesort": false,
+        "sort": 2,
+        "type": 1
+      }
+    },
+    {
+      "name": "CrackingPatching",
+      "definitionName": "crackingpatching",
+      "implementation": "Cardigann",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "fields": {
+        "definitionFile": "crackingpatching"
+      }
+    },
+    {
+      "name": "EZTV",
+      "definitionName": "eztv",
+      "implementation": "Cardigann",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "tags": [
+        "flaresolverr"
+      ],
+      "fields": {
+        "definitionFile": "eztv"
+      }
+    },
+    {
+      "name": "LimeTorrents",
+      "definitionName": "limetorrents",
+      "implementation": "Cardigann",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "fields": {
+        "definitionFile": "limetorrents",
+        "downloadlink": 1,
+        "downloadlink2": 0,
+        "sort": 0
+      }
+    },
+    {
+      "name": "The Pirate Bay",
+      "definitionName": "thepiratebay",
+      "implementation": "Cardigann",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "fields": {
+        "definitionFile": "thepiratebay",
+        "apiurl": "apibay.org",
+        "uploader": ""
+      }
+    },
+    {
+      "name": "TorrentsCSV",
+      "definitionName": "TorrentsCSV",
+      "implementation": "TorrentsCSV",
+      "enable": true,
+      "appProfile": "Standard",
+      "priority": 25,
+      "fields": {
+        "baseUrl": "https://torrents-csv.com/"
+      }
+    }
+  ]
+}
