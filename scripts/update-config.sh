@@ -213,13 +213,8 @@ function update_arr_config {
   local arr_config="${CONFIG_ROOT:-.}"/"$container"/config.xml
   until [ -f "$arr_config" ]; do sleep 1; done
   set_xml_config_value "$arr_config" "UrlBase" ""
-  if [[ "$container" =~ ^(sonarr|radarr|prowlarr)$ ]]; then
-    set_xml_config_value "$arr_config" "AuthenticationMethod" "Forms"
-    set_xml_config_value "$arr_config" "AuthenticationRequired" "DisabledForLocalAddresses"
-  fi
-  if [[ "$container" == "prowlarr" ]]; then
-    set_xml_config_value "$arr_config" "AuthenticationMethod" "External"
-  fi
+  set_xml_config_value "$arr_config" "AuthenticationMethod" "Forms"
+  set_xml_config_value "$arr_config" "AuthenticationRequired" "Enabled"
   CONTAINER_NAME_UPPER=$(echo "$container" | tr '[:lower:]' '[:upper:]')
   sed -i.bak 's/^'"${CONTAINER_NAME_UPPER}"'_API_KEY=.*/'"${CONTAINER_NAME_UPPER}"'_API_KEY='"$(sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' "$arr_config")"'/' .env && rm .env.bak
   clean_appledouble_files "${CONFIG_ROOT:-.}/$container"

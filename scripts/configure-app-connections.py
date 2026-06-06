@@ -40,6 +40,7 @@ class ArrService:
     qbit_directory_field: str | None
     prowlarr_implementation: str
     internal_base_url: str
+    api_version: str
 
 
 ARR_SERVICES: tuple[ArrService, ...] = (
@@ -55,6 +56,7 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         qbit_directory_field=None,
         prowlarr_implementation="Sonarr",
         internal_base_url="http://sonarr:8989",
+        api_version="v3",
     ),
     ArrService(
         service_name="radarr",
@@ -68,6 +70,7 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         qbit_directory_field=None,
         prowlarr_implementation="Radarr",
         internal_base_url="http://radarr:7878",
+        api_version="v3",
     ),
     ArrService(
         service_name="lidarr",
@@ -81,6 +84,7 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         qbit_directory_field="directory",
         prowlarr_implementation="Lidarr",
         internal_base_url="http://lidarr:8686",
+        api_version="v1",
     ),
 )
 
@@ -129,6 +133,10 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
 
     for key in (
         "QBITTORRENT_USERNAME",
+        "SONARR_USERNAME",
+        "RADARR_USERNAME",
+        "LIDARR_USERNAME",
+        "PROWLARR_USERNAME",
         "ADGUARD_USERNAME",
         "CALIBRE_USERNAME",
         "PAPERLESS_ADMIN_USER",
@@ -138,6 +146,10 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
 
     for key in (
         "QBITTORRENT_PASSWORD",
+        "SONARR_PASSWORD",
+        "RADARR_PASSWORD",
+        "LIDARR_PASSWORD",
+        "PROWLARR_PASSWORD",
         "ADGUARD_PASSWORD",
         "CALIBRE_PASSWORD",
         "PAPERLESS_ADMIN_PASSWORD",
@@ -826,34 +838,67 @@ class ArrApi:
             f"http://127.0.0.1:{service_port}{service.url_base}",
             default_headers={"X-Api-Key": api_key},
         )
+        self.api_base = f"/api/{service.api_version}"
 
     def get_root_folders(self) -> list[dict[str, Any]]:
-        return self.client.request_json("GET", "/api/v3/rootfolder") or []
+        return self.client.request_json("GET", f"{self.api_base}/rootfolder") or []
+
+    def configure_authentication(self, username: str, password: str) -> None:
+        host_config = self.client.request_json("GET", f"{self.api_base}/config/host")
+        host_config.update(
+            {
+                "authenticationMethod": "forms",
+                "authenticationRequired": "enabled",
+                "username": username,
+                "password": password,
+                "passwordConfirmation": password,
+            }
+        )
+        self.client.request_json("PUT", f"{self.api_base}/config/host", payload=host_config)
 
     def get_quality_profiles(self) -> list[dict[str, Any]]:
-        return self.client.request_json("GET", "/api/v3/qualityprofile") or []
+        return self.client.request_json("GET", f"{self.api_base}/qualityprofile") or []
 
     def get_language_profiles(self) -> list[dict[str, Any]]:
         try:
-            return self.client.request_json("GET", "/api/v3/languageprofile") or []
+            return self.client.request_json("GET", f"{self.api_base}/languageprofile") or []
+        except RuntimeError:
+            return []
+
+    def get_metadata_profiles(self) -> list[dict[str, Any]]:
+        try:
+            return self.client.request_json("GET", f"{self.api_base}/metadataprofile") or []
         except RuntimeError:
             return []
 
     def create_root_folder(self, path: str) -> None:
-        self.client.request_json("POST", "/api/v3/rootfolder", payload={"path": path})
+        payload: dict[str, Any] = {"path": path}
+        if self.service.service_name == "lidarr":
+            quality_profiles = self.get_quality_profiles()
+            metadata_profiles = self.get_metadata_profiles()
+            if not quality_profiles or not metadata_profiles:
+                raise RuntimeError("Lidarr has no quality or metadata profile for its root folder")
+            payload.update(
+                {
+                    "name": Path(path).name or "Music",
+                    "defaultQualityProfileId": quality_profiles[0]["id"],
+                    "defaultMetadataProfileId": metadata_profiles[0]["id"],
+                }
+            )
+        self.client.request_json("POST", f"{self.api_base}/rootfolder", payload=payload)
 
     def get_download_clients(self) -> list[dict[str, Any]]:
-        return self.client.request_json("GET", "/api/v3/downloadclient") or []
+        return self.client.request_json("GET", f"{self.api_base}/downloadclient") or []
 
     def get_download_client_schema(self) -> list[dict[str, Any]]:
-        return self.client.request_json("GET", "/api/v3/downloadclient/schema") or []
+        return self.client.request_json("GET", f"{self.api_base}/downloadclient/schema") or []
 
     def upsert_download_client(self, payload: dict[str, Any], item_id: int | None) -> None:
         if item_id is None:
-            self.client.request_json("POST", "/api/v3/downloadclient", payload=payload)
+            self.client.request_json("POST", f"{self.api_base}/downloadclient", payload=payload)
             return
 
-        self._try_put("/api/v3/downloadclient", item_id, payload)
+        self._try_put(f"{self.api_base}/downloadclient", item_id, payload)
 
     def _try_put(self, base_path: str, item_id: int, payload: dict[str, Any]) -> None:
         errors: list[str] = []
@@ -878,6 +923,19 @@ class ProwlarrApi:
 
     def get_applications(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", "/api/v1/applications") or []
+
+    def configure_authentication(self, username: str, password: str) -> None:
+        host_config = self.client.request_json("GET", "/api/v1/config/host")
+        host_config.update(
+            {
+                "authenticationMethod": "forms",
+                "authenticationRequired": "enabled",
+                "username": username,
+                "password": password,
+                "passwordConfirmation": password,
+            }
+        )
+        self.client.request_json("PUT", "/api/v1/config/host", payload=host_config)
 
     def get_schema(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", "/api/v1/applications/schema") or []
@@ -1751,6 +1809,12 @@ def ensure_arr_integrations(env: dict[str, str], running_services: set[str], dry
             continue
 
         arr_api = ArrApi(arr_service, api_key)
+        if dry_run:
+            log(f"[dry-run] Would configure {arr_service.display_name} forms authentication")
+        else:
+            prefix = arr_service.service_name.upper()
+            arr_api.configure_authentication(env[f"{prefix}_USERNAME"], env[f"{prefix}_PASSWORD"])
+            log(f"Configured {arr_service.display_name} forms authentication")
         ensure_arr_root_folder(arr_api, env, dry_run)
         ensure_arr_download_client(arr_api, env, dry_run)
 
@@ -1766,6 +1830,11 @@ def ensure_prowlarr_integrations(env: dict[str, str], running_services: set[str]
         return
 
     prowlarr_api = ProwlarrApi(prowlarr_key)
+    if dry_run:
+        log("[dry-run] Would configure Prowlarr forms authentication")
+    else:
+        prowlarr_api.configure_authentication(env["PROWLARR_USERNAME"], env["PROWLARR_PASSWORD"])
+        log("Configured Prowlarr forms authentication")
     for arr_service in ARR_SERVICES:
         if arr_service.service_name not in running_services:
             continue

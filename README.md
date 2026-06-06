@@ -103,7 +103,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, Sonarr, Radarr, Prowlarr, and Seerr wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, Sonarr, Radarr, Lidarr, Prowlarr, and Seerr configuration and wiring to match `.env`.
 
 The only values most users need to fill are:
 
@@ -114,7 +114,7 @@ The only values most users need to fill are:
 - `GLOBAL_PASSWORD` if you want a password other than `adminadmin`.
 - `JELLYFIN_SERVER_NAME` if you want Jellyfin to show a custom server name.
 
-Every service username defaults to `admin`. Blank per-service password fields use `GLOBAL_PASSWORD`; fill a service-specific password only when it should differ.
+Every service username defaults to `ADMIN_USERNAME`. Blank per-service password fields use `GLOBAL_PASSWORD`; fill a service-specific password only when it should differ. Sonarr, Radarr, Lidarr, and Prowlarr are configured with forms authentication required for every request.
 
 Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`. TSDProxy uses that ignored secret file to create a private HTTPS endpoint for each labelled web service. Tailscale normally establishes direct peer-to-peer connections on the LAN, so the same URLs are used locally and remotely.
 
@@ -153,6 +153,14 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `ADGUARD_PASSWORD`             | Optional - AdGuard Home password override                                                                                                                                                              |                                                  |
 | `QBITTORRENT_USERNAME`         | Optional qBittorrent username override                                                                                                                                                                 |                                                  |
 | `QBITTORRENT_PASSWORD`         | Optional qBittorrent password override                                                                                                                                                                 |                                                  |
+| `SONARR_USERNAME`              | Optional Sonarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
+| `SONARR_PASSWORD`              | Optional Sonarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
+| `RADARR_USERNAME`              | Optional Radarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
+| `RADARR_PASSWORD`              | Optional Radarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
+| `LIDARR_USERNAME`              | Optional Lidarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
+| `LIDARR_PASSWORD`              | Optional Lidarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
+| `PROWLARR_USERNAME`            | Optional Prowlarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                       |                                                  |
+| `PROWLARR_PASSWORD`            | Optional Prowlarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                       |                                                  |
 | `JELLYFIN_SERVER_NAME`         | Jellyfin server name applied during automated setup                                                                                                                                                    | `Docker-Compose NAS`                             |
 | `JELLYFIN_ADMIN_USERNAME`      | Optional Jellyfin admin username override; blank uses `ADMIN_USERNAME`                                                                                                                                 |                                                  |
 | `JELLYFIN_ADMIN_PASSWORD`      | Optional Jellyfin admin password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                |                                                  |
