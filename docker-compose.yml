@@ -240,6 +240,51 @@ services:
       - "5000"
     profiles:
       - profilarr
+  ofelia:
+    image: mcuadros/ofelia:0.3.19
+    container_name: ofelia
+    restart: unless-stopped
+    command: daemon --docker
+    environment:
+      - TZ=${TIMEZONE}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-run.profilarr-window.schedule: "${PROFILARR_START_SCHEDULE:-58 2 * * *}"
+      ofelia.job-run.profilarr-window.image: "docker:cli"
+      ofelia.job-run.profilarr-window.delete: "true"
+      ofelia.job-run.profilarr-window.no-overlap: "true"
+      ofelia.job-run.profilarr-window.volume: '["/var/run/docker.sock:/var/run/docker.sock"]'
+      ofelia.job-run.profilarr-window.environment: '["PROFILARR_RUN_WINDOW=${PROFILARR_RUN_WINDOW:-22m}"]'
+      ofelia.job-run.profilarr-window.command: >-
+        sh -ec '
+          stop_profilarr() {
+            docker stop -t 30 profilarr profilarr-parser >/dev/null 2>&1 || true;
+          };
+          wait_until_ready() {
+            container="$$1";
+            attempts=0;
+            while [ "$$attempts" -lt 60 ]; do
+              state="$$(docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" "$$container")";
+              if [ "$$state" = "healthy" ] || [ "$$state" = "running" ]; then
+                return 0;
+              fi;
+              attempts="$$((attempts + 1))";
+              sleep 5;
+            done;
+            echo "$$container did not become ready within 5 minutes" >&2;
+            return 1;
+          };
+          trap stop_profilarr EXIT INT TERM;
+          docker start profilarr-parser >/dev/null;
+          wait_until_ready profilarr-parser;
+          docker start profilarr >/dev/null;
+          wait_until_ready profilarr;
+          sleep "$$PROFILARR_RUN_WINDOW"
+        '
+    profiles:
+      - profilarr
   suggestarr:
     image: ciuse99/suggestarr:latest
     container_name: suggestarr

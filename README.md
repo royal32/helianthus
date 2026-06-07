@@ -153,6 +153,8 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
 | `TSDPROXY_DASHBOARD_PORT`      | Localhost-only diagnostic port for the TSDProxy dashboard.                                                                                                                                             | `8080`                                           |
 | `TSDPROXY_DISABLE_TLS`         | Set `true` in test environments to expose services over tailnet HTTP without requesting TLS certificates. Run `setup-stack.sh` after changing it.                                                       | `false`                                          |
+| `PROFILARR_START_SCHEDULE`     | Ofelia cron schedule that starts the daily Profilarr work window. The default starts shortly before 3am so Profilarr is ready for jobs scheduled at 3am.                                                | `58 2 * * *`                                     |
+| `PROFILARR_RUN_WINDOW`         | Maximum time Profilarr and its parser remain running after Ofelia starts them.                                                                                                                          | `22m`                                            |
 | `ADGUARD_USERNAME`             | Optional - AdGuard Home username override                                                                                                                                                              |                                                  |
 | `ADGUARD_PASSWORD`             | Optional - AdGuard Home password override                                                                                                                                                              |                                                  |
 | `QBITTORRENT_USERNAME`         | Optional qBittorrent username override                                                                                                                                                                 |                                                  |
@@ -451,6 +453,16 @@ The stack builds qui from the upstream release selected by `QUI_REF` and applies
 Enable Profilarr by setting `COMPOSE_PROFILES=profilarr`. It is available at `${TSDPROXY_URL_SCHEME}://profilarr.${TAILNET_DOMAIN}`.
 
 Setup creates or updates Profilarr connections for the running Sonarr and Radarr services using their internal Docker URLs, generated API keys, and tailnet external URLs. Profilarr API keys are treated as write-only secrets because Profilarr does not expose them in its live page data.
+
+Profilarr and its parser remain running after initial stack setup so you can finish configuring scheduled tasks. When configuration is complete, stop them with:
+
+```shell
+docker compose stop profilarr profilarr-parser
+```
+
+Ofelia remains running and starts both containers at `02:58` each day, waits for them to become healthy, then stops them at approximately `03:20`. This gives tasks scheduled for 3am a 20-minute execution window. Change `PROFILARR_START_SCHEDULE` or `PROFILARR_RUN_WINDOW` in `.env` to adjust the window. If Profilarr is still running at the next trigger, Ofelia uses the same bounded window and stops it afterward.
+
+Ofelia requires Docker socket access to start and stop the containers. Treat it as a privileged infrastructure service.
 
 ### SABnzbd
 
