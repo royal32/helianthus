@@ -900,6 +900,25 @@ class QuiApi:
     def test_instance(self, instance_id: int) -> dict[str, Any]:
         return self.client.request_json("POST", f"/api/instances/{instance_id}/test") or {}
 
+    def discover_indexers(self, base_url: str, api_key: str) -> dict[str, Any]:
+        return self.client.request_json(
+            "POST",
+            "/api/torznab/indexers/discover",
+            payload={"base_url": base_url, "api_key": api_key},
+        ) or {}
+
+    def get_indexers(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", "/api/torznab/indexers") or []
+
+    def create_indexer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", "/api/torznab/indexers", payload=payload) or {}
+
+    def update_indexer(self, indexer_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("PUT", f"/api/torznab/indexers/{indexer_id}", payload=payload) or {}
+
+    def test_indexer(self, indexer_id: int) -> dict[str, Any]:
+        return self.client.request_json("POST", f"/api/torznab/indexers/{indexer_id}/test") or {}
+
 
 class ArrApi:
     def __init__(self, service: ArrService, api_key: str) -> None:
@@ -1844,21 +1863,14 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
             log(f"qBittorrent category {category_name} already matches the desired state")
 
 
-def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
-    if "qui" not in running_services:
-        return
+def ensure_qui_qbittorrent_instance(
+    api: QuiApi,
+    env: dict[str, str],
+    running_services: set[str],
+) -> None:
     if "qbittorrent" not in running_services:
-        log("Skipping qui automation because qBittorrent is not running")
+        log("Skipping qui qBittorrent connection because qBittorrent is not running")
         return
-    if "prowlarr" not in running_services:
-        log("Skipping qui automation because the shared-network API transport is not running")
-        return
-
-    username = env["ADMIN_USERNAME"]
-    password = env["GLOBAL_PASSWORD"]
-    if len(password) < 8:
-        raise RuntimeError("qui requires GLOBAL_PASSWORD to contain at least 8 characters")
-
     instance_payload = {
         "name": "qBittorrent",
         "host": "http://vpn:8080",
@@ -1866,23 +1878,6 @@ def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_
         "password": env["QBITTORRENT_PASSWORD"],
         "hasLocalFilesystemAccess": True,
     }
-
-    if dry_run:
-        log("[dry-run] Would configure qui global credentials and qBittorrent instance")
-        return
-
-    api = QuiApi()
-    if api.setup_required():
-        api.setup(username, password)
-        log("Configured qui global credentials")
-    else:
-        try:
-            api.login(username, password)
-        except RuntimeError as exc:
-            raise RuntimeError(
-                "qui login failed with ADMIN_USERNAME/GLOBAL_PASSWORD; "
-                "reset qui or restore the credentials previously used by setup"
-            ) from exc
 
     instances = api.get_instances()
     existing = next(
@@ -1906,6 +1901,95 @@ def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_
     if not connection.get("connected"):
         raise RuntimeError(f"qui could not connect to qBittorrent: {connection.get('error') or connection}")
     log("Verified qui qBittorrent connection")
+
+
+def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str]) -> None:
+    prowlarr_api_key = env.get("PROWLARR_API_KEY", "").strip()
+    if not prowlarr_api_key:
+        log("Skipping qui Prowlarr indexer discovery because PROWLARR_API_KEY is empty")
+        return
+
+    prowlarr_url = "http://prowlarr:9696"
+    discovery = api.discover_indexers(prowlarr_url, prowlarr_api_key)
+    discovered_indexers = discovery.get("indexers", [])
+    if not isinstance(discovered_indexers, list):
+        raise RuntimeError(f"qui returned an invalid Prowlarr discovery response: {discovery}")
+
+    for warning in discovery.get("warnings", []):
+        log(f"qui Prowlarr discovery warning: {warning}")
+
+    existing_by_name = {
+        str(indexer.get("name", "")): indexer
+        for indexer in api.get_indexers()
+        if indexer.get("name")
+    }
+    synced = 0
+
+    for discovered in discovered_indexers:
+        name = str(discovered.get("name", "")).strip()
+        prowlarr_indexer_id = str(discovered.get("id", "")).strip()
+        if not name or not prowlarr_indexer_id:
+            log(f"Skipping invalid qui Prowlarr discovery result: {discovered}")
+            continue
+
+        payload = {
+            "base_url": prowlarr_url,
+            "api_key": prowlarr_api_key,
+            "backend": discovered.get("backend") or "prowlarr",
+            "indexer_id": prowlarr_indexer_id,
+            "capabilities": discovered.get("caps") or [],
+            "categories": discovered.get("categories") or [],
+        }
+        existing = existing_by_name.get(name)
+        if existing:
+            indexer = api.update_indexer(int(existing["id"]), payload)
+            log(f"Updated qui Prowlarr indexer {name}")
+        else:
+            indexer = api.create_indexer({"name": name, "enabled": True, **payload})
+            log(f"Created qui Prowlarr indexer {name}")
+
+        synced += 1
+        try:
+            result = api.test_indexer(int(indexer["id"]))
+            if result.get("status") != "ok":
+                log(f"qui Prowlarr indexer {name} test warning: {result}")
+        except RuntimeError as exc:
+            log(f"qui Prowlarr indexer {name} test warning: {exc}")
+
+    log(f"Synced {synced} Prowlarr indexer(s) into qui")
+
+
+def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if "qui" not in running_services:
+        return
+    if "prowlarr" not in running_services:
+        log("Skipping qui automation because Prowlarr is not running")
+        return
+
+    username = env["ADMIN_USERNAME"]
+    password = env["GLOBAL_PASSWORD"]
+    if len(password) < 8:
+        raise RuntimeError("qui requires GLOBAL_PASSWORD to contain at least 8 characters")
+
+    if dry_run:
+        log("[dry-run] Would configure qui credentials, qBittorrent connection, and Prowlarr indexers")
+        return
+
+    api = QuiApi()
+    if api.setup_required():
+        api.setup(username, password)
+        log("Configured qui global credentials")
+    else:
+        try:
+            api.login(username, password)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "qui login failed with ADMIN_USERNAME/GLOBAL_PASSWORD; "
+                "reset qui or restore the credentials previously used by setup"
+            ) from exc
+
+    ensure_qui_qbittorrent_instance(api, env, running_services)
+    ensure_qui_prowlarr_indexers(api, env)
 
 
 def ensure_arr_root_folder(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
@@ -2475,7 +2559,11 @@ def main() -> int:
     parser.add_argument("--skip-prowlarr", action="store_true", help="Skip Prowlarr resources and application links")
     parser.add_argument("--skip-jellyfin", action="store_true", help="Skip Jellyfin initial setup and library configuration")
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")
-    parser.add_argument("--skip-qui", action="store_true", help="Skip qui initial setup and qBittorrent connection")
+    parser.add_argument(
+        "--skip-qui",
+        action="store_true",
+        help="Skip qui initial setup, qBittorrent connection, and Prowlarr indexer discovery",
+    )
     parser.add_argument("--skip-profilarr", action="store_true", help="Skip Profilarr Sonarr/Radarr connections")
     args = parser.parse_args()
 
@@ -2488,14 +2576,14 @@ def main() -> int:
     if not args.skip_qbittorrent:
         ensure_qbittorrent_paths_and_categories(env, running_services, args.dry_run)
 
-    if not args.skip_qui:
-        ensure_qui_integration(env, running_services, args.dry_run)
-
     if not args.skip_arr:
         ensure_arr_integrations(env, running_services, args.dry_run)
 
     if not args.skip_prowlarr:
         ensure_prowlarr_integrations(env, running_services, args.dry_run)
+
+    if not args.skip_qui:
+        ensure_qui_integration(env, running_services, args.dry_run)
 
     if not args.skip_jellyfin:
         ensure_jellyfin_setup(env, running_services, args.dry_run)

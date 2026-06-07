@@ -448,6 +448,8 @@ Enable qui by setting `COMPOSE_PROFILES=qui`. It is available at `https://qui.${
 
 The setup automation creates the qui admin account using `ADMIN_USERNAME` and `GLOBAL_PASSWORD` (which must contain at least eight characters), then creates or updates its qBittorrent instance using `http://vpn:8080` and the effective `QBITTORRENT_USERNAME` and `QBITTORRENT_PASSWORD`. Local Filesystem Access is enabled because the container mounts the qBittorrent download path at `/data/torrents`, allowing qui features such as orphan scans, hardlink detection, and filesystem-based automations.
 
+After Prowlarr setup completes, the automation uses qui's native Prowlarr discovery API to import every current Prowlarr indexer. Existing qui indexers with matching names are refreshed while manually configured qui indexers that are not present in Prowlarr are left untouched. Individual indexer connectivity-test failures are logged as warnings so a temporarily unavailable tracker does not fail the full stack setup.
+
 The stack builds qui from the upstream release selected by `QUI_REF` and applies `qui/visible-external-ip.patch`. This keeps the External IPv4/IPv6 address visible beside its badge in the instance-page status bar while preserving the existing tooltip and incognito-mode blur.
 
 ### Profilarr
