@@ -251,16 +251,19 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
       ofelia.enabled: "true"
-      ofelia.job-run.profilarr-window.schedule: "${PROFILARR_START_SCHEDULE:-58 2 * * *}"
+      ofelia.job-run.profilarr-window.schedule: "${PROFILARR_START_SCHEDULE:-0 58 2 * * *}"
       ofelia.job-run.profilarr-window.image: "docker:cli"
       ofelia.job-run.profilarr-window.delete: "true"
       ofelia.job-run.profilarr-window.no-overlap: "true"
       ofelia.job-run.profilarr-window.volume: '["/var/run/docker.sock:/var/run/docker.sock"]'
-      ofelia.job-run.profilarr-window.environment: '["PROFILARR_RUN_WINDOW=${PROFILARR_RUN_WINDOW:-30m}", "PROFILARR_TRIGGER_GRACE=${PROFILARR_TRIGGER_GRACE:-3m}", "PROFILARR_JOB_WINDOW_SECONDS=${PROFILARR_JOB_WINDOW_SECONDS:-1200}"]'
+      ofelia.job-run.profilarr-window.environment: '["PROFILARR_RUN_WINDOW=${PROFILARR_RUN_WINDOW:-30m}"]'
       ofelia.job-run.profilarr-window.command: >-
         sh -ec '
           stop_profilarr() {
             docker stop -t 30 profilarr profilarr-parser >/dev/null 2>&1 || true;
+          };
+          finish_profilarr_window() {
+            exit 0;
           };
           wait_until_ready() {
             container="$$1";
@@ -276,45 +279,14 @@ services:
             echo "$$container did not become ready within 5 minutes" >&2;
             return 1;
           };
-          trap stop_profilarr EXIT INT TERM;
+          trap stop_profilarr EXIT;
+          trap finish_profilarr_window INT TERM;
           docker start profilarr-parser >/dev/null;
           wait_until_ready profilarr-parser;
           docker start profilarr >/dev/null;
           wait_until_ready profilarr;
-          if timeout "$$PROFILARR_RUN_WINDOW" sh -ec "
-            sleep \"$$PROFILARR_TRIGGER_GRACE\";
-            cutoff_epoch=\"\$$(($$(date +%s) + $$PROFILARR_JOB_WINDOW_SECONDS))\";
-            idle_checks=0;
-            while true; do
-              status=\"\$$(docker exec profilarr curl -fsS http://127.0.0.1:6868/api/v1/status 2>/dev/null || true)\";
-              active=\"\$$(printf \"%s\" \"\$$status\" | sed -n \"s/.*\\\"jobs\\\":{\\\"active\\\":\\([0-9][0-9]*\\),.*/\\1/p\")\";
-              next_run=\"\$$(printf \"%s\" \"\$$status\" | sed -n \"s/.*\\\"nextRunAt\\\":\\\"\\([^\\\"]*\\)\\\".*/\\1/p\")\";
-              next_epoch=0;
-              if [ -n \"\$$next_run\" ]; then
-                normalized_next_run=\"\$$(printf \"%s\" \"\$$next_run\" | sed \"s/T/ /; s/\\.[0-9][0-9]*Z\$$//; s/Z\$$//\")\";
-                next_epoch=\"\$$(date -u -d \"\$$normalized_next_run\" +%s 2>/dev/null || printf 0)\";
-              fi;
-              if [ \"\$$active\" = \"0\" ] && { [ -z \"\$$next_run\" ] || [ \"\$$next_epoch\" -gt \"\$$cutoff_epoch\" ]; }; then
-                idle_checks=\"\$$((idle_checks + 1))\";
-                if [ \"\$$idle_checks\" -ge 3 ]; then
-                  echo \"Profilarr has no active jobs or queued jobs inside the daily window; stopping\";
-                  exit 0;
-                fi;
-              else
-                idle_checks=0;
-              fi;
-              sleep 10;
-            done
-          "; then
-            :
-          else
-            result="$$?";
-            if [ "$$result" -eq 124 ] || [ "$$result" -eq 143 ]; then
-              echo "Profilarr daily window reached the $$PROFILARR_RUN_WINDOW hard timeout" >&2;
-            else
-              exit "$$result";
-            fi;
-          fi
+          echo "Profilarr is healthy; keeping the daily job window open for $$PROFILARR_RUN_WINDOW";
+          sleep "$$PROFILARR_RUN_WINDOW"
         '
     profiles:
       - profilarr
@@ -531,6 +503,7 @@ services:
     volumes:
       - ${CONFIG_ROOT:-.}/jellyfin:/config
       - ${DATA_ROOT}:/data
+      - ./jellyfin/custom-cont-init.d:/custom-cont-init.d
     ports:
       - "7359:7359/udp"
       - "1900:1900/udp"
