@@ -2380,6 +2380,14 @@ def profilarr_instance_matches(existing: dict[str, Any], desired: dict[str, Any]
     return all((existing.get(key) or [] if key == "tags" else existing.get(key)) == desired[key] for key in managed_keys)
 
 
+def profilarr_runtime_origin() -> str:
+    result = run_compose(["exec", "-T", "profilarr", "sh", "-lc", "printf '%s' \"${ORIGIN:-}\""], check=False)
+    origin = result.stdout.strip()
+    if result.returncode == 0 and origin:
+        return origin
+    return "http://127.0.0.1:6868"
+
+
 def wait_for_profilarr_instance(profilarr_api: ProfilarrApi, desired: dict[str, Any]) -> dict[str, Any]:
     for _ in range(20):
         instances = profilarr_api.get_arr_instances()
@@ -2404,7 +2412,7 @@ def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str
             log("Skipping Profilarr automation because the service is not running")
         return
 
-    profilarr_api = ProfilarrApi(build_external_url(env, "profilarr") or "http://127.0.0.1:6868")
+    profilarr_api = ProfilarrApi(profilarr_runtime_origin())
     instances = profilarr_api.get_arr_instances()
     for arr_service in ARR_SERVICES:
         if arr_service.service_name not in {"sonarr", "radarr"}:
