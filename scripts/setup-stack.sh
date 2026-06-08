@@ -34,7 +34,7 @@ Options:
 
 Examples:
   ./scripts/setup-stack.sh
-  ./scripts/setup-stack.sh --profiles paperless,vaultwarden
+  ./scripts/setup-stack.sh --profiles vaultwarden
   ./scripts/setup-stack.sh --set DATA_ROOT=/srv/data --set DOWNLOAD_ROOT=/srv/data/torrents
 EOF
 }
@@ -488,12 +488,6 @@ provision_service_envs() {
     copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$config_root/vaultwarden/.env"
   fi
 
-  if profile_enabled "paperless" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/paperless/.env.example" "$config_root/paperless/.env"
-    set_if_missing_or_default "$config_root/paperless/.env" "PAPERLESS_TIME_ZONE" "America/New_York" "$timezone_value"
-    set_generated_secret_if_blank "$config_root/paperless/.env" "PAPERLESS_SECRET_KEY"
-  fi
-
   if profile_enabled "tandoor-backup" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/tandoor/backup.env.example" "$config_root/tandoor/backup.env"
     set_if_missing_or_default "$config_root/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
@@ -502,11 +496,6 @@ provision_service_envs() {
   if profile_enabled "vaultwarden-backup" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/vaultwarden/backup.env.example" "$config_root/vaultwarden/backup.env"
     set_if_missing_or_default "$config_root/vaultwarden/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
-  fi
-
-  if profile_enabled "paperless-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/paperless/backup.env.example" "$config_root/paperless/backup.env"
-    set_if_missing_or_default "$config_root/paperless/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
 }

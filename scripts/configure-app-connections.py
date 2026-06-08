@@ -139,7 +139,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "LIDARR_USERNAME",
         "PROWLARR_USERNAME",
         "CALIBRE_USERNAME",
-        "PAPERLESS_ADMIN_USER",
     ):
         if not env.get(key):
             env[key] = admin_username
@@ -151,7 +150,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "LIDARR_PASSWORD",
         "PROWLARR_PASSWORD",
         "CALIBRE_PASSWORD",
-        "PAPERLESS_ADMIN_PASSWORD",
     ):
         if not env.get(key):
             env[key] = global_password
@@ -505,14 +503,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "icon": "vaultwarden.png",
             "href": build_external_url(env, "vaultwarden") or "/",
             "description": "Password manager",
-        },
-        {
-            "service": "paperless-webserver",
-            "group": "Apps",
-            "name": "Paperless",
-            "icon": "paperless.png",
-            "href": build_external_url(env, "paperless") or "/",
-            "description": "Document management",
         },
     ]
     services = [service for service in services if service["service"] in running_services]

@@ -54,7 +54,6 @@ Based on the docker-compose-nas project by AdrienPoupa
     - [Decluttarr](#decluttarr)
     - [Tandoor](#tandoor)
     - [Vaultwarden](#vaultwarden)
-    - [Paperless Ngx](#paperless-ngx)
   - [Customization](#customization)
     - [Optional: Using the VPN for \*arr apps](#optional-using-the-vpn-for-arr-apps)
   - [Synology Quirks](#synology-quirks)
@@ -96,7 +95,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | `autobrr.${TAILNET_DOMAIN}` |
 | [qui](https://github.com/autobrr/qui)                              | Optional - Modern web interface for managing qBittorrent<br/>Enable with `COMPOSE_PROFILES=qui`                                                               | [autobrr/qui](https://ghcr.io/autobrr/qui)                                                | `qui.${TAILNET_DOMAIN}` |
 | [Suggestarr](github.com/giuseppe99barchetta/SuggestArr)                      | Optional - SuggestArr is a project designed to automate media content recommendations and download requests<br/>Enable with `COMPOSE_PROFILES=suggestarr`                                            | [ciuse99/suggestarr](https://hub.docker.com/r/ciuse99/suggestarr)                                       | `suggestarr.${TAILNET_DOMAIN}` |
-| [Paperless Ngx](https://paperless-ngx.com)                            | Optional - Document management system for organizing and searching your documents<br/>Enable with `COMPOSE_PROFILES=paperless`                                                     | [paperless-ngx/paperless-ngx](https://ghcr.io/paperless-ngx/paperless-ngx)                           | `paperless.${TAILNET_DOMAIN}` |
 
 Optional containers are not enabled by default, they need to be enabled,
 see [Optional Services](#optional-services) for more information.
@@ -128,7 +126,7 @@ Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`.
 Common examples:
 
 ```shell
-COMPOSE_PROFILES=paperless,vaultwarden docker compose up -d
+COMPOSE_PROFILES=vaultwarden docker compose up -d
 COMPOSE_PROFILES=tandoor,tandoor-backup docker compose up -d
 ```
 
@@ -507,10 +505,6 @@ See [here](./tandoor/README.md).
 ### Vaultwarden
 
 See [here](./vaultwarden/README.md).
-
-### Paperless Ngx
-
-See [here](./paperless/README.md).
 
 ## Customization
 
