@@ -464,17 +464,6 @@ services:
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8080/http
       - tsdproxy.dash.label=qBittorrent
       - autoheal=true
-  cross-seed:
-    image: ghcr.io/cross-seed/cross-seed:latest
-    container_name: cross-seed
-    user: ${USER_ID}:${GROUP_ID}
-    volumes:
-      - ${CONFIG_ROOT:-.}/cross-seed:/config
-      - ${DOWNLOAD_ROOT}:/data/torrents
-    command: daemon
-    restart: always
-    profiles:
-      - cross-seed
   unpackerr:
     image: ghcr.io/unpackerr/unpackerr:latest
     container_name: unpackerr
@@ -524,23 +513,6 @@ services:
       - autoheal=true
     profiles:
       - cleanuparr
-  sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd:latest
-    container_name: sabnzbd
-    environment:
-      - PUID=${USER_ID}
-      - PGID=${GROUP_ID}
-      - TZ=${TIMEZONE}
-    volumes:
-      - ${CONFIG_ROOT:-.}/sabnzbd:/config
-      - ${DATA_ROOT}:/data
-    restart: always
-    labels:
-      - tsdproxy.enable=true
-      - tsdproxy.name=sabnzbd
-      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8080/http
-      - tsdproxy.dash.label=SABnzbd
-    profiles:
       - sabnzbd
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
