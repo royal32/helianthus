@@ -1,6 +1,6 @@
 name: docker-compose-nas
-
 services:
+
   stack-bootstrap:
     build:
       context: .
@@ -14,7 +14,6 @@ services:
     volumes:
       - .:/stack
       - /var/run/docker.sock:/var/run/docker.sock
-
   stack-setup:
     build:
       context: .
@@ -48,8 +47,6 @@ services:
         condition: service_started
       jellyfin:
         condition: service_started
-      homepage:
-        condition: service_started
 
   tsdproxy:
     image: almeidapaulopt/tsdproxy:2.3.3
@@ -70,6 +67,7 @@ services:
       - tsdproxy.name=tsdproxy-dashboard
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8080/http, no_autodetect
       - tsdproxy.dash.label=TSDProxy
+      - autoheal=true
   tsdproxy-wake-watchdog:
     image: docker:cli
     container_name: tsdproxy-wake-watchdog
@@ -108,6 +106,9 @@ services:
           previous_epoch="$$(date +%s)";
         done
       '
+    labels:
+      - autoheal=true
+
   sonarr:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
@@ -125,6 +126,7 @@ services:
       timeout: 5s
       retries: 30
     labels:
+      - autoheal=true
       - tsdproxy.enable=true
       - tsdproxy.name=sonarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8989/http
@@ -150,6 +152,7 @@ services:
       - tsdproxy.name=radarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:7878/http
       - tsdproxy.dash.label=Radarr
+      - autoheal=true
   lidarr:
     image: lscr.io/linuxserver/lidarr
     container_name: lidarr
@@ -171,6 +174,7 @@ services:
       - tsdproxy.name=lidarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8686/http
       - tsdproxy.dash.label=Lidarr
+      - autoheal=true
     profiles:
       - lidarr
   bazarr:
@@ -194,6 +198,7 @@ services:
       - tsdproxy.name=bazarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:6767/http
       - tsdproxy.dash.label=Bazarr
+      - autoheal=true
     profiles:
       - bazarr
   seerr:
@@ -241,6 +246,7 @@ services:
       - tsdproxy.name=prowlarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:9696/http
       - tsdproxy.dash.label=Prowlarr
+      - autoheal=true
   profilarr:
     image: ghcr.io/dictionarry-hub/profilarr:latest
     container_name: profilarr
@@ -268,6 +274,7 @@ services:
       - tsdproxy.name=profilarr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:6868/http
       - tsdproxy.dash.label=Profilarr
+      - autoheal=true
     profiles:
       - profilarr
   profilarr-parser:
@@ -336,9 +343,10 @@ services:
     restart: always
     labels:
     - tsdproxy.enable=true
-    - tsdproxy.name=suggestarr
-    - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:5000/http
-    - tsdproxy.dash.label=Suggestarr
+      - tsdproxy.name=suggestarr
+      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:5000/http
+      - tsdproxy.dash.label=Suggestarr
+      - autoheal=true
     profiles:
       - suggestarr
   flaresolverr:
@@ -355,8 +363,7 @@ services:
       - tsdproxy.name=flaresolverr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8191/http
       - tsdproxy.dash.label=FlareSolverr
-    profiles:
-      - flaresolverr
+      - autoheal=true
   autobrr:
     container_name: autobrr
     image: ghcr.io/autobrr/autobrr:latest
@@ -371,6 +378,7 @@ services:
       - tsdproxy.name=autobrr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:7474/http
       - tsdproxy.dash.label=Autobrr
+      - autoheal=true
     profiles:
       - autobrr
   qui:
@@ -391,6 +399,7 @@ services:
       - tsdproxy.name=qui
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:7476/http
       - tsdproxy.dash.label=qui
+      - autoheal=true
     profiles:
       - qui
   qbittorrent:
@@ -420,6 +429,7 @@ services:
         condition: service_healthy
     labels:
       - com.centurylinklabs.watchtower.depends-on=vpn
+      - autoheal=true
   vpn:
     image: ghcr.io/thrnz/docker-wireguard-pia:latest
     container_name: vpn
@@ -453,6 +463,7 @@ services:
       - tsdproxy.name=qbittorrent
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8080/http
       - tsdproxy.dash.label=qBittorrent
+      - autoheal=true
   cross-seed:
     image: ghcr.io/cross-seed/cross-seed:latest
     container_name: cross-seed
@@ -510,6 +521,7 @@ services:
       - tsdproxy.name=cleanuparr
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:11011/http
       - tsdproxy.dash.label=Cleanuparr
+      - autoheal=true
     profiles:
       - cleanuparr
   sabnzbd:
@@ -556,6 +568,7 @@ services:
       - tsdproxy.name=jellyfin
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8096/http
       - tsdproxy.dash.label=Jellyfin
+      - autoheal=true
   calibre-web:
     image: lscr.io/linuxserver/calibre-web:latest
     container_name: calibre-web
@@ -574,6 +587,7 @@ services:
       - tsdproxy.name=calibre
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8083/http
       - tsdproxy.dash.label=Calibre-Web
+      - autoheal=true
     profiles:
       - calibre-web
   homepage:
@@ -601,6 +615,9 @@ services:
       - tsdproxy.name=homepage
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:3000/http
       - tsdproxy.dash.label=Homepage
+      - autoheal=true
+    profiles:
+      - homepage
   watchtower:
     image: ghcr.io/nicholas-fedor/watchtower:latest
     container_name: watchtower
@@ -611,18 +628,16 @@ services:
       - WATCHTOWER_INCLUDE_STOPPED=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    profiles:
-      - watchtower
+    labels:
+      - autoheal=true
   autoheal:
     image: willfarrell/autoheal:latest
     container_name: autoheal
     restart: always
     environment:
-      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_CONTAINER_LABEL
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    profiles:
-      - autoheal
 
 networks:
   default:
