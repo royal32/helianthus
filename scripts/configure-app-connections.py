@@ -499,19 +499,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "description": "Recipe management",
         },
         {
-            "service": "immich-server",
-            "group": "Apps",
-            "name": "Immich",
-            "icon": "immich.png",
-            "href": build_external_url(env, "immich") or "/",
-            "description": "Photo and video management",
-            "widget": {
-                "type": "immich",
-                "url": "http://immich-server:2283",
-                "key": env.get("IMMICH_API_KEY", ""),
-            },
-        },
-        {
             "service": "vaultwarden",
             "group": "Utilities",
             "name": "Vaultwarden",

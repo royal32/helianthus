@@ -36,7 +36,6 @@ Examples:
   ./scripts/setup-stack.sh
   ./scripts/setup-stack.sh --profiles paperless,vaultwarden
   ./scripts/setup-stack.sh --set DATA_ROOT=/srv/data --set DOWNLOAD_ROOT=/srv/data/torrents
-  ./scripts/setup-stack.sh --profiles immich,immich-backup
 EOF
 }
 
@@ -355,7 +354,6 @@ ensure_root_env() {
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then
     set_if_missing_or_default "$ENV_FILE" "DOWNLOAD_ROOT" "/mnt/data/torrents" "${data_root%/}/torrents"
-    set_if_missing_or_default "$ENV_FILE" "IMMICH_UPLOAD_LOCATION" "/mnt/data/photos" "${data_root%/}/photos"
   fi
 
   config_root=$(get_env_value "$ENV_FILE" "CONFIG_ROOT" || true)
@@ -367,7 +365,6 @@ ensure_root_env() {
 
   normalize_env_value_quotes "$ENV_FILE" "DATA_ROOT"
   normalize_env_value_quotes "$ENV_FILE" "DOWNLOAD_ROOT"
-  normalize_env_value_quotes "$ENV_FILE" "IMMICH_UPLOAD_LOCATION"
   normalize_env_value_quotes "$ENV_FILE" "CONFIG_ROOT"
   prepare_homepage_config
 }
@@ -512,10 +509,6 @@ provision_service_envs() {
     set_if_missing_or_default "$config_root/paperless/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
-  if profile_enabled "immich-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/immich/backup.env.example" "$config_root/immich/backup.env"
-    set_if_missing_or_default "$config_root/immich/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
-  fi
 }
 
 validate_compose() {

@@ -53,7 +53,6 @@ Based on the docker-compose-nas project by AdrienPoupa
     - [Calibre-Web](#calibre-web)
     - [Decluttarr](#decluttarr)
     - [Tandoor](#tandoor)
-    - [Immich](#immich)
     - [Vaultwarden](#vaultwarden)
     - [Paperless Ngx](#paperless-ngx)
   - [Customization](#customization)
@@ -90,7 +89,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
 | [Tandoor](https://tandoor.dev)                                     | Optional - Smart recipe management<br/>Enable with `COMPOSE_PROFILES=tandoor`                                                                                 | [vabene1111/recipes](https://hub.docker.com/r/vabene1111/recipes)                        | `tandoor.${TAILNET_DOMAIN}` |
-| [Immich](https://immich.app)                                       | Optional - Self-hosted photo and video management solution<br/>Enable with `COMPOSE_PROFILES=immich`                                                          | [immich-app/immich-server:release](https://ghcr.io/immich-app/immich-server)             | `immich.${TAILNET_DOMAIN}` |
 | [Calibre-Web](https://github.com/janeczku/calibre-web)             | Optional - Web app for browsing, reading and downloading eBooks stored in a Calibre database<br/>Enable with `COMPOSE_PROFILES=calibre-web`                   | [linuxserver/calibre-web](https://hub.docker.com/r/linuxserver/calibre-web)              | `calibre.${TAILNET_DOMAIN}` |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
 | [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
@@ -116,7 +114,7 @@ The Compose stack includes a `stack-setup` one-shot service. On `docker compose 
 
 The only values most users need to fill are:
 
-- `DATA_ROOT`, `DOWNLOAD_ROOT`, and `IMMICH_UPLOAD_LOCATION` for host media paths.
+- `DATA_ROOT` and `DOWNLOAD_ROOT` for host media paths.
 - `CONFIG_ROOT` for app runtime config/databases. Delete this directory between test runs to reset the stack without deleting media.
 - `PIA_LOCATION`, `PIA_USER`, `PIA_PASS`, and usually `PIA_LOCAL_NETWORK` for Private Internet Access.
 - `TAILNET_DOMAIN` for the DNS suffix shown in the Tailscale admin console, for example `example-tailnet.ts.net`.
@@ -144,7 +142,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | `DATA_ROOT`                    | Host location of the data files                                                                                                                                                                        | `/mnt/data`                                      |
 | `DOWNLOAD_ROOT`                | Host download location for qBittorrent, should be a subfolder of `DATA_ROOT`                                                                                                                           | `/mnt/data/torrents`                             |
-| `IMMICH_UPLOAD_LOCATION`       | Host location for Immich uploads, if Immich is enabled                                                                                                                                                 | `/mnt/data/photos`                               |
 | `CONFIG_ROOT`                  | Host location for generated service config, app databases, and other resettable runtime state                                                                                                           | `./runtime`                                      |
 | `PIA_LOCATION`                 | Servers to use for PIA. [see list here](https://serverlist.piaservers.net/vpninfo/servers/v6)                                                                                                          | `ca` (Montreal, Canada)                          |
 | `PIA_USER`                     | PIA username                                                                                                                                                                                           |                                                  |
@@ -506,10 +503,6 @@ All environment variables are prefixed with `DECLUTTARR_`.
 ### Tandoor
 
 See [here](./tandoor/README.md).
-
-### Immich
-
-See [here](./immich/README.md).
 
 ### Vaultwarden
 
