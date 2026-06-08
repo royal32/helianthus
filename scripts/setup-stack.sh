@@ -487,10 +487,6 @@ provision_service_envs() {
     set_generated_secret_if_blank "$config_root/tandoor/.env" "SECRET_KEY"
   fi
 
-  if profile_enabled "joplin" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/joplin/.env.example" "$config_root/joplin/.env"
-  fi
-
   if profile_enabled "vaultwarden" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$config_root/vaultwarden/.env"
   fi
@@ -504,11 +500,6 @@ provision_service_envs() {
   if profile_enabled "tandoor-backup" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/tandoor/backup.env.example" "$config_root/tandoor/backup.env"
     set_if_missing_or_default "$config_root/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
-  fi
-
-  if profile_enabled "joplin-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/joplin/backup.env.example" "$config_root/joplin/backup.env"
-    set_if_missing_or_default "$config_root/joplin/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "homeassistant-backup" "$profiles_csv"; then

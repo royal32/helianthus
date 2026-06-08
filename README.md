@@ -53,7 +53,6 @@ Based on the docker-compose-nas project by AdrienPoupa
     - [Calibre-Web](#calibre-web)
     - [Decluttarr](#decluttarr)
     - [Tandoor](#tandoor)
-    - [Joplin](#joplin)
     - [Home Assistant](#home-assistant)
     - [Immich](#immich)
     - [Vaultwarden](#vaultwarden)
@@ -92,7 +91,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
 | [Tandoor](https://tandoor.dev)                                     | Optional - Smart recipe management<br/>Enable with `COMPOSE_PROFILES=tandoor`                                                                                 | [vabene1111/recipes](https://hub.docker.com/r/vabene1111/recipes)                        | `tandoor.${TAILNET_DOMAIN}` |
-| [Joplin](https://joplinapp.org)                                    | Optional - Note taking application<br/>Enable with `COMPOSE_PROFILES=joplin`                                                                                  | [joplin/server](https://hub.docker.com/r/joplin/server)                                  | `joplin.${TAILNET_DOMAIN}` |
 | [Home Assistant](https://www.home-assistant.io)                    | Optional - Open source home automation that puts local control and privacy first<br/>Enable with `COMPOSE_PROFILES=homeassistant`                             | [home-assistant/home-assistant:stable](https://ghcr.io/home-assistant/home-assistant)    | `homeassistant.${TAILNET_DOMAIN}` |
 | [Immich](https://immich.app)                                       | Optional - Self-hosted photo and video management solution<br/>Enable with `COMPOSE_PROFILES=immich`                                                          | [immich-app/immich-server:release](https://ghcr.io/immich-app/immich-server)             | `immich.${TAILNET_DOMAIN}` |
 | [Calibre-Web](https://github.com/janeczku/calibre-web)             | Optional - Web app for browsing, reading and downloading eBooks stored in a Calibre database<br/>Enable with `COMPOSE_PROFILES=calibre-web`                   | [linuxserver/calibre-web](https://hub.docker.com/r/linuxserver/calibre-web)              | `calibre.${TAILNET_DOMAIN}` |
@@ -510,10 +508,6 @@ All environment variables are prefixed with `DECLUTTARR_`.
 ### Tandoor
 
 See [here](./tandoor/README.md).
-
-### Joplin
-
-See [here](./joplin/README.md).
 
 ### Home Assistant
 

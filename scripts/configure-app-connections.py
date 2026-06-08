@@ -499,14 +499,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "description": "Recipe management",
         },
         {
-            "service": "joplin",
-            "group": "Apps",
-            "name": "Joplin",
-            "icon": "joplin.png",
-            "href": build_external_url(env, "joplin") or "/",
-            "description": "Note-taking server",
-        },
-        {
             "service": "homeassistant",
             "group": "Apps",
             "name": "Home Assistant",
