@@ -73,20 +73,6 @@ ARR_SERVICES: tuple[ArrService, ...] = (
         internal_base_url="http://radarr:7878",
         api_version="v3",
     ),
-    ArrService(
-        service_name="lidarr",
-        display_name="Lidarr",
-        url_base="",
-        api_key_env="LIDARR_API_KEY",
-        root_folder_env="LIDARR_ROOT_FOLDER",
-        category_env="LIDARR_QBIT_CATEGORY",
-        download_path_env="LIDARR_DOWNLOAD_PATH",
-        qbit_implementation_field="category",
-        qbit_directory_field="directory",
-        prowlarr_implementation="Lidarr",
-        internal_base_url="http://lidarr:8686",
-        api_version="v1",
-    ),
 )
 
 
@@ -136,7 +122,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "QBITTORRENT_USERNAME",
         "SONARR_USERNAME",
         "RADARR_USERNAME",
-        "LIDARR_USERNAME",
         "PROWLARR_USERNAME",
     ):
         if not env.get(key):
@@ -146,7 +131,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "QBITTORRENT_PASSWORD",
         "SONARR_PASSWORD",
         "RADARR_PASSWORD",
-        "LIDARR_PASSWORD",
         "PROWLARR_PASSWORD",
     ):
         if not env.get(key):
@@ -246,7 +230,6 @@ def sync_generated_api_keys(env: dict[str, str], dry_run: bool) -> bool:
     discovered = {
         "SONARR_API_KEY": read_xml_text(config_root / "sonarr" / "config.xml", "ApiKey"),
         "RADARR_API_KEY": read_xml_text(config_root / "radarr" / "config.xml", "ApiKey"),
-        "LIDARR_API_KEY": read_xml_text(config_root / "lidarr" / "config.xml", "ApiKey"),
         "PROWLARR_API_KEY": read_xml_text(config_root / "prowlarr" / "config.xml", "ApiKey"),
         "BAZARR_API_KEY": read_bazarr_api_key(config_root / "bazarr" / "config" / "config" / "config.yaml"),
     }
@@ -394,19 +377,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
                 "url": "http://vpn:8080",
                 "username": env.get("QBITTORRENT_USERNAME", ""),
                 "password": env.get("QBITTORRENT_PASSWORD", ""),
-            },
-        },
-        {
-            "service": "lidarr",
-            "group": "Media",
-            "name": "Lidarr",
-            "icon": "lidarr.png",
-            "href": build_external_url(env, "lidarr") or "/",
-            "description": "Music management",
-            "widget": {
-                "type": "lidarr",
-                "url": "http://lidarr:8686",
-                "key": env.get("LIDARR_API_KEY", ""),
             },
         },
         {
@@ -847,7 +817,6 @@ class ArrApi:
         service_port = {
             "sonarr": 8989,
             "radarr": 7878,
-            "lidarr": 8686,
         }[service.service_name]
         self.client = ContainerJsonClient(
             service.service_name,
@@ -889,18 +858,6 @@ class ArrApi:
 
     def create_root_folder(self, path: str) -> None:
         payload: dict[str, Any] = {"path": path}
-        if self.service.service_name == "lidarr":
-            quality_profiles = self.get_quality_profiles()
-            metadata_profiles = self.get_metadata_profiles()
-            if not quality_profiles or not metadata_profiles:
-                raise RuntimeError("Lidarr has no quality or metadata profile for its root folder")
-            payload.update(
-                {
-                    "name": Path(path).name or "Music",
-                    "defaultQualityProfileId": quality_profiles[0]["id"],
-                    "defaultMetadataProfileId": metadata_profiles[0]["id"],
-                }
-            )
         self.client.request_json("POST", f"{self.api_base}/rootfolder", payload=payload)
 
     def get_download_clients(self) -> list[dict[str, Any]]:
@@ -1492,7 +1449,6 @@ def ensure_jellyfin_libraries(api: JellyfinApi, env: dict[str, str], dry_run: bo
         for name, _, path in (
             ("Movies", "movies", env["RADARR_ROOT_FOLDER"]),
             ("Shows", "tvshows", env["SONARR_ROOT_FOLDER"]),
-            ("Music", "music", env["LIDARR_ROOT_FOLDER"]),
         ):
             log(f"[dry-run] Would ensure Jellyfin {name} library at {path}")
         return
@@ -1504,7 +1460,6 @@ def ensure_jellyfin_libraries(api: JellyfinApi, env: dict[str, str], dry_run: bo
     desired_libraries = (
         ("Movies", "movies", env["RADARR_ROOT_FOLDER"]),
         ("Shows", "tvshows", env["SONARR_ROOT_FOLDER"]),
-        ("Music", "music", env["LIDARR_ROOT_FOLDER"]),
     )
 
     for name, collection_type, path in desired_libraries:
@@ -1663,8 +1618,6 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
             settings_changed = True
 
     for arr_service in ARR_SERVICES:
-        if arr_service.service_name == "lidarr":
-            continue
         if arr_service.service_name not in running_services:
             continue
         if not env.get(arr_service.api_key_env):
@@ -2476,7 +2429,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Automate app-to-app connections for the Helianthus stack.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything")
     parser.add_argument("--skip-qbittorrent", action="store_true", help="Skip qBittorrent path and category updates")
-    parser.add_argument("--skip-arr", action="store_true", help="Skip Sonarr/Radarr/Lidarr root folders and download clients")
+    parser.add_argument("--skip-arr", action="store_true", help="Skip Sonarr/Radarr root folders and download clients")
     parser.add_argument("--skip-prowlarr", action="store_true", help="Skip Prowlarr resources and application links")
     parser.add_argument("--skip-jellyfin", action="store_true", help="Skip Jellyfin initial setup and library configuration")
     parser.add_argument("--skip-seerr", action="store_true", help="Skip Seerr service and media-server preconfiguration")

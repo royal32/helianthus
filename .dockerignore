@@ -21,7 +21,6 @@ homepage/*.yaml
 homepage/logs/
 jellyfin/
 letsencrypt/
-lidarr/
 pia/
 pia-shared/
 prowlarr/

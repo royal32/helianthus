@@ -37,7 +37,7 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Quick Start](#quick-start)
   - [Environment Variables](#environment-variables)
   - [PIA WireGuard VPN](#pia-wireguard-vpn)
-  - [Sonarr, Radarr & Lidarr](#sonarr-radarr--lidarr)
+  - [Sonarr & Radarr](#sonarr--radarr)
     - [File Structure](#file-structure)
     - [Download Client](#download-client)
   - [Prowlarr](#prowlarr)
@@ -82,7 +82,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [TSDProxy](https://github.com/almeidapaulopt/tsdproxy)             | Tailscale reverse proxy that exposes labelled containers as private MagicDNS HTTPS services                                                                     | [almeidapaulopt/tsdproxy](https://hub.docker.com/r/almeidapaulopt/tsdproxy)              |                        |
 | [Watchtower](https://watchtower.nickfedor.com)                     | Automated Docker images update                                                                                                                                | [nicholas-fedor/watchtower](https://ghcr.io/nicholas-fedor/watchtower)                   |                        |
 | [Autoheal](https://github.com/willfarrell/docker-autoheal/)        | Monitor and restart unhealthy Docker containers                                                                                                               | [willfarrell/autoheal](https://hub.docker.com/r/willfarrell/autoheal)                    |                        |
-| [Lidarr](https://lidarr.audio)                                     | Optional - Music collection manager for Usenet and BitTorrent users<br/>Enable with `COMPOSE_PROFILES=lidarr`                                                 | [linuxserver/lidarr](https://hub.docker.com/r/linuxserver/lidarr)                        | `lidarr.${TAILNET_DOMAIN}` |
 | [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
@@ -104,7 +103,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Lidarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
 
 The only values most users need to fill are:
 
@@ -115,7 +114,7 @@ The only values most users need to fill are:
 - `GLOBAL_PASSWORD` if you want a password other than `adminadmin`.
 - `JELLYFIN_SERVER_NAME` if you want Jellyfin to show a custom server name.
 
-Every service username defaults to `ADMIN_USERNAME`. Blank per-service password fields use `GLOBAL_PASSWORD`; fill a service-specific password only when it should differ. Sonarr, Radarr, Lidarr, and Prowlarr are configured with forms authentication required for every request.
+Every service username defaults to `ADMIN_USERNAME`. Blank per-service password fields use `GLOBAL_PASSWORD`; fill a service-specific password only when it should differ. Sonarr, Radarr, and Prowlarr are configured with forms authentication required for every request.
 
 Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`. TSDProxy uses that ignored secret file to create a private HTTPS endpoint for each labelled web service. Tailscale normally establishes direct peer-to-peer connections on the LAN, so the same URLs are used locally and remotely.
 
@@ -161,8 +160,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `SONARR_PASSWORD`              | Optional Sonarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
 | `RADARR_USERNAME`              | Optional Radarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
 | `RADARR_PASSWORD`              | Optional Radarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
-| `LIDARR_USERNAME`              | Optional Lidarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
-| `LIDARR_PASSWORD`              | Optional Lidarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                        |                                                  |
 | `PROWLARR_USERNAME`            | Optional Prowlarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                       |                                                  |
 | `PROWLARR_PASSWORD`            | Optional Prowlarr password override; blank uses `GLOBAL_PASSWORD`                                                                                                                                       |                                                  |
 | `JELLYFIN_SERVER_NAME`         | Jellyfin server name applied during automated setup                                                                                                                                                    | `Docker-Compose NAS`                             |
@@ -172,16 +169,12 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `QBITTORRENT_TEMP_PATH`        | qBittorrent temporary download path inside the container                                                                                                                                                | `/data/torrents/incomplete`                      |
 | `SONARR_ROOT_FOLDER`           | Sonarr root folder created and configured automatically                                                                                                                                                 | `/data/media/tv`                                 |
 | `RADARR_ROOT_FOLDER`           | Radarr root folder created and configured automatically                                                                                                                                                | `/data/media/movies`                             |
-| `LIDARR_ROOT_FOLDER`           | Lidarr root folder created and configured automatically                                                                                                                                                | `/data/media/music`                              |
 | `SONARR_DOWNLOAD_PATH`         | qBittorrent save path used for Sonarr-managed downloads                                                                                                                                                | `/data/torrents/tv`                              |
 | `RADARR_DOWNLOAD_PATH`         | qBittorrent save path used for Radarr-managed downloads                                                                                                                                                | `/data/torrents/movies`                          |
-| `LIDARR_DOWNLOAD_PATH`         | qBittorrent save path used for Lidarr-managed downloads                                                                                                                                                | `/data/torrents/music`                           |
 | `SONARR_QBIT_CATEGORY`         | qBittorrent category configured for Sonarr                                                                                                                                                              | `tv-sonarr`                                      |
 | `RADARR_QBIT_CATEGORY`         | qBittorrent category configured for Radarr                                                                                                                                                              | `radarr`                                         |
-| `LIDARR_QBIT_CATEGORY`         | qBittorrent category configured for Lidarr                                                                                                                                                              | `lidarr`                                         |
 | `SONARR_API_KEY`               | Sonarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `RADARR_API_KEY`               | Radarr API key to show information in the homepage                                                                                                                                                     |                                                  |
-| `LIDARR_API_KEY`               | Lidarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `PROWLARR_API_KEY`             | Prowlarr API key to show information in the homepage                                                                                                                                                   |                                                  |
 | `BAZARR_API_KEY`               | Bazarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `JELLYFIN_API_KEY`             | Jellyfin API key to show information in the homepage                                                                                                                                                   |                                                  |
@@ -224,11 +217,11 @@ The location of the server it will connect to is set by `LOC=ca`, defaulting to 
 You need to fill the credentials in the `PIA_*` environment variable,
 otherwise the VPN container will exit and qBittorrent will not start.
 
-## Sonarr, Radarr & Lidarr
+## Sonarr & Radarr
 
 ### File Structure
 
-Sonarr, Radarr, and Lidarr must be configured to support hardlinks, to allow instant moves and prevent using twice the storage
+Sonarr and Radarr must be configured to support hardlinks, to allow instant moves and prevent using twice the storage
 (Bittorrent downloads and final file). The trick is to use a single volume shared by the Bittorrent client and the \*arrs.
 Subfolders are used to separate the TV shows from the movies.
 
@@ -244,13 +237,11 @@ data
 └── media = shared folder for Sonarr and Radarr files
    ├── movies = Radarr
    └── tv = Sonarr
-   └── music = Lidarr
 ```
 
 Go to Settings > Management.
 In Sonarr, set the Root folder to `/data/media/tv`.
 In Radarr, set the Root folder to `/data/media/movies`.
-In Lidarr, set the Root folder to `/data/media/music`.
 
 ### Download Client
 
@@ -269,7 +260,7 @@ Because all the networking for qBittorrent takes place in the VPN container, the
 
 Prowlarr indexers, tags, app profiles, and indexer proxies are declared in `config/prowlarr.json`. The setup automation creates missing resources and updates managed resources by name without deleting additional resources created manually.
 
-The committed configuration includes the Standard app profile, FlareSolverr proxy and tag, and the approved public indexers. The FlareSolverr proxy is applied only while the optional `flaresolverr` service is running. `docker compose up` also adds the Prowlarr application links for Sonarr, Radarr, and Lidarr automatically when those services are running.
+The committed configuration includes the Standard app profile, FlareSolverr proxy and tag, and the approved public indexers. The FlareSolverr proxy is applied only while the optional `flaresolverr` service is running. `docker compose up` also adds the Prowlarr application links for Sonarr and Radarr automatically when those services are running.
 
 Preview or apply Prowlarr configuration changes with:
 
@@ -278,7 +269,7 @@ Preview or apply Prowlarr configuration changes with:
 ./scripts/configure-app-connections.py
 ```
 
-The internal Prowlarr server is `http://prowlarr:9696`, Radarr is `http://radarr:7878`, Sonarr is `http://sonarr:8989`, and Lidarr is `http://lidarr:8686`.
+The internal Prowlarr server is `http://prowlarr:9696`, Radarr is `http://radarr:7878`, and Sonarr is `http://sonarr:8989`.
 
 Their API keys can be found in Settings > Security > API Key.
 

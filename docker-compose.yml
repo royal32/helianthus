@@ -153,30 +153,6 @@ services:
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:7878/http
       - tsdproxy.dash.label=Radarr
       - autoheal=true
-  lidarr:
-    image: lscr.io/linuxserver/lidarr
-    container_name: lidarr
-    environment:
-      - PUID=${USER_ID}
-      - PGID=${GROUP_ID}
-      - TZ=${TIMEZONE}
-    volumes:
-      - ${CONFIG_ROOT:-.}/lidarr:/config
-      - ${DATA_ROOT}:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8686/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-    labels:
-      - tsdproxy.enable=true
-      - tsdproxy.name=lidarr
-      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8686/http
-      - tsdproxy.dash.label=Lidarr
-      - autoheal=true
-    profiles:
-      - lidarr
   bazarr:
     image: lscr.io/linuxserver/bazarr
     container_name: bazarr

@@ -291,7 +291,7 @@ function update_jellyfin_config {
 CONFIG_ROOT=$(effective_env_value "CONFIG_ROOT" ".")
 
 for container in $(docker compose ps --services --status running); do
-  if [[ "$container" =~ ^(radarr|sonarr|lidarr|prowlarr)$ ]]; then
+  if [[ "$container" =~ ^(radarr|sonarr|prowlarr)$ ]]; then
     update_arr_config "$container"
   elif [[ "$container" =~ ^(jellyfin)$ ]]; then
     update_jellyfin_config "$container"

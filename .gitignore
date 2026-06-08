@@ -12,7 +12,6 @@ docker-compose.override.yml
 /radarr
 /prowlarr
 /jellyfin.broken-*
-/lidarr
 /bazarr
 /huntarr
 /qbittorrent
