@@ -16,7 +16,6 @@ TAILNET_PATTERN = re.compile(r"^[a-z0-9-]+\.ts\.net$")
 ALLOWED_PUBLISHED_PORTS = {
     ("jellyfin", "1900", "udp"),
     ("jellyfin", "7359", "udp"),
-    ("mosquitto", "1883", "tcp"),
 }
 
 

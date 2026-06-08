@@ -502,11 +502,6 @@ provision_service_envs() {
     set_if_missing_or_default "$config_root/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
-  if profile_enabled "homeassistant-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/homeassistant/backup.env.example" "$config_root/homeassistant/backup.env"
-    set_if_missing_or_default "$config_root/homeassistant/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
-  fi
-
   if profile_enabled "vaultwarden-backup" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/vaultwarden/backup.env.example" "$config_root/vaultwarden/backup.env"
     set_if_missing_or_default "$config_root/vaultwarden/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"

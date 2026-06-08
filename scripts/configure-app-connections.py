@@ -499,14 +499,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "description": "Recipe management",
         },
         {
-            "service": "homeassistant",
-            "group": "Apps",
-            "name": "Home Assistant",
-            "icon": "home-assistant.png",
-            "href": build_external_url(env, "homeassistant") or "/",
-            "description": "Home automation",
-        },
-        {
             "service": "immich-server",
             "group": "Apps",
             "name": "Immich",
