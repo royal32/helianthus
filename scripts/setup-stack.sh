@@ -478,19 +478,8 @@ provision_service_envs() {
 
   config_root="$(get_config_root)"
 
-  if profile_enabled "tandoor" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/tandoor/.env.example" "$config_root/tandoor/.env"
-    set_if_missing_or_default "$config_root/tandoor/.env" "TZ" "America/New_York" "$timezone_value"
-    set_generated_secret_if_blank "$config_root/tandoor/.env" "SECRET_KEY"
-  fi
-
   if profile_enabled "vaultwarden" "$profiles_csv"; then
     copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$config_root/vaultwarden/.env"
-  fi
-
-  if profile_enabled "tandoor-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/tandoor/backup.env.example" "$config_root/tandoor/backup.env"
-    set_if_missing_or_default "$config_root/tandoor/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
   fi
 
   if profile_enabled "vaultwarden-backup" "$profiles_csv"; then

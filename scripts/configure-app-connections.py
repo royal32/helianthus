@@ -489,14 +489,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             },
         },
         {
-            "service": "tandoor",
-            "group": "Apps",
-            "name": "Tandoor",
-            "icon": "tandoor-recipes.png",
-            "href": build_external_url(env, "tandoor") or "/",
-            "description": "Recipe management",
-        },
-        {
             "service": "vaultwarden",
             "group": "Utilities",
             "name": "Vaultwarden",
