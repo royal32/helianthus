@@ -541,27 +541,6 @@ services:
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8096/http
       - tsdproxy.dash.label=Jellyfin
       - autoheal=true
-  calibre-web:
-    image: lscr.io/linuxserver/calibre-web:latest
-    container_name: calibre-web
-    environment:
-      - PUID=${USER_ID}
-      - PGID=${GROUP_ID}
-      - TZ=${TIMEZONE}
-      - DOCKER_MODS=linuxserver/mods:universal-calibre
-      - OAUTHLIB_RELAX_TOKEN_SCOPE=1
-    volumes:
-      - ${CONFIG_ROOT:-.}/calibre-web:/config
-      - ${DATA_ROOT}/books:/books
-    restart: unless-stopped
-    labels:
-      - tsdproxy.enable=true
-      - tsdproxy.name=calibre
-      - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8083/http
-      - tsdproxy.dash.label=Calibre-Web
-      - autoheal=true
-    profiles:
-      - calibre-web
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage

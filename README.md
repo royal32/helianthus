@@ -50,7 +50,6 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
     - [SABnzbd](#sabnzbd)
-    - [Calibre-Web](#calibre-web)
     - [Decluttarr](#decluttarr)
     - [Vaultwarden](#vaultwarden)
   - [Customization](#customization)
@@ -86,7 +85,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [Lidarr](https://lidarr.audio)                                     | Optional - Music collection manager for Usenet and BitTorrent users<br/>Enable with `COMPOSE_PROFILES=lidarr`                                                 | [linuxserver/lidarr](https://hub.docker.com/r/linuxserver/lidarr)                        | `lidarr.${TAILNET_DOMAIN}` |
 | [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
-| [Calibre-Web](https://github.com/janeczku/calibre-web)             | Optional - Web app for browsing, reading and downloading eBooks stored in a Calibre database<br/>Enable with `COMPOSE_PROFILES=calibre-web`                   | [linuxserver/calibre-web](https://hub.docker.com/r/linuxserver/calibre-web)              | `calibre.${TAILNET_DOMAIN}` |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
 | [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
 | [Cross-Seed](https://github.com/cross-seed/cross-seed)             | Optional - Cross-Seed is a tool for automating the cross-seeding of torrents<br/>Enable with `COMPOSE_PROFILES=cross-seed`                                    | [cross-seed/cross-seed](https://ghcr.io/cross-seed/cross-seed)                           |                        |
@@ -197,8 +195,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `HOMEPAGE_VAR_WEATHER_LAT`     | Homepage weather city latitude                                                                                                                                                                         |                                                  |
 | `HOMEPAGE_VAR_WEATHER_LONG`    | Homepage weather city longitude                                                                                                                                                                        |                                                  |
 | `HOMEPAGE_VAR_WEATHER_UNIT`    | Homepage weather unit, either `metric` or `imperial`                                                                                                                                                   | `metric`                                         |
-| `CALIBRE_USERNAME`             | Optional - Calibre-Web username to show details in the homepage, if enabled                                                                                                                            | `admin`                                          |
-| `CALIBRE_PASSWORD`             | Optional - Calibre-Web password to show details in the homepage, if enabled                                                                                                                            | `admin123`                                       |
 | `SEERR_RADARR_PROFILE`         | Radarr quality profile name selected automatically for Seerr movie requests                                                                                                                            | `HD-1080p`                                       |
 | `SEERR_RADARR_MINIMUM_AVAILABILITY` | Radarr minimum availability used for Seerr movie requests                                                                                                                                        | `released`                                       |
 | `SEERR_SONARR_PROFILE`         | Sonarr quality profile name selected automatically for Seerr series requests                                                                                                                           | `HD-1080p`                                       |
@@ -475,18 +471,6 @@ Ofelia requires Docker socket access to start and stop the containers. Treat it 
 ### SABnzbd
 
 Enable SABnzbd by setting `COMPOSE_PROFILES=sabnzbd`. It is available at `https://sabnzbd.${TAILNET_DOMAIN}` and should keep a blank `url_base`.
-
-### Calibre-Web
-
-If you do not have a Calibre database, download a sample from: https://github.com/janeczku/calibre-web/raw/master/library/metadata.db
-and place it in `${DATA_ROOT}/books`.
-
-On the initial setup screen, enter `/books` as your calibre library location.
-
-**Default admin login:** Username: `admin` Password: `admin123`.
-
-Unrar is included by default and needs to be set in the Calibre-Web admin page (Basic Configuration:External Binaries)
-with a path of `/usr/bin/unrar`.
 
 ### Decluttarr
 

@@ -138,7 +138,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "RADARR_USERNAME",
         "LIDARR_USERNAME",
         "PROWLARR_USERNAME",
-        "CALIBRE_USERNAME",
     ):
         if not env.get(key):
             env[key] = admin_username
@@ -149,7 +148,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "RADARR_PASSWORD",
         "LIDARR_PASSWORD",
         "PROWLARR_PASSWORD",
-        "CALIBRE_PASSWORD",
     ):
         if not env.get(key):
             env[key] = global_password
@@ -472,20 +470,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
                 "type": "sabnzbd",
                 "url": "http://sabnzbd:8080",
                 "key": env.get("SABNZBD_API_KEY", ""),
-            },
-        },
-        {
-            "service": "calibre-web",
-            "group": "Media",
-            "name": "Calibre-Web",
-            "icon": "calibre-web.png",
-            "href": build_external_url(env, "calibre") or "/",
-            "description": "Book management",
-            "widget": {
-                "type": "calibreweb",
-                "url": "http://calibre-web:8083",
-                "username": env.get("CALIBRE_USERNAME", ""),
-                "password": env.get("CALIBRE_PASSWORD", ""),
             },
         },
         {

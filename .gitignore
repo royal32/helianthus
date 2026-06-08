@@ -24,7 +24,6 @@ docker-compose.override.yml
 !/seerr/Dockerfile
 !/seerr/patch-search.mjs
 /sabnzbd
-/calibre-web
 /cleanuparr
 /cross-seed
 /autobrr
