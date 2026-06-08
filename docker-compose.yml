@@ -1,4 +1,4 @@
-name: docker-compose-nas
+name: Helianthus
 services:
 
   stack-bootstrap:
@@ -641,7 +641,7 @@ services:
 
 networks:
   default:
-    name: docker-compose-nas
+    name: Helianthus
 
 secrets:
   tsdproxy_authkey:

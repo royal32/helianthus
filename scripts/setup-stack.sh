@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/setup-stack.sh [options]
 
-Bootstrap the local Docker Compose NAS stack by creating missing env files,
+Bootstrap the local Helianthus stack by creating missing env files,
 filling safe local defaults, validating the compose config, starting the stack,
 and running the first-run post-start configuration.
 
@@ -53,11 +53,17 @@ print_setup_complete_banner() {
 ##############################################################################
 ##############################################################################
 ##                                                                          ##
-##                           SETUP COMPLETE                                 ##
+##                             SETUP COMPLETE                               ##
 ##                                                                          ##
-##                 Docker Compose NAS is fully configured.                  ##
+##                     Helianthus is fully configured.                      ##
 ##                                                                          ##
-##                  You can now open the configured services.                ##
+##                You can now open the configured services                  ##
+##                at any of the tailscale address formats.                  ##
+##                                                                          ##
+##                jellyfin/                                                 ##
+##                jellyfin.<tailnet>.ts.net                                 ##
+##                100.x.y.z                                                 ##
+##                                                                          ##
 ##                                                                          ##
 ##############################################################################
 EOF

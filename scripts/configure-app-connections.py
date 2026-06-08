@@ -867,7 +867,7 @@ class QuiApi:
         self.client = ContainerJsonClient(
             "prowlarr",
             "http://qui:7476",
-            cookie_file="/tmp/docker-compose-nas-qui-cookies.txt",
+            cookie_file="/tmp/Helianthus-qui-cookies.txt",
         )
 
     def setup_required(self) -> bool:
@@ -1224,9 +1224,9 @@ class JellyfinApi(ContainerJsonClient):
 
     def authenticate(self, username: str, password: str) -> str:
         auth_header = (
-            'MediaBrowser Client="Docker Compose NAS Setup", '
-            'Device="Docker Compose NAS", '
-            f'DeviceId="{uuid.uuid5(uuid.NAMESPACE_DNS, "docker-compose-nas-jellyfin-setup")}", '
+            'MediaBrowser Client="Helianthus Setup", '
+            'Device="Helianthus", '
+            f'DeviceId="{uuid.uuid5(uuid.NAMESPACE_DNS, "Helianthus-jellyfin-setup")}", '
             'Version="1.0"'
         )
         client = JellyfinApi()
@@ -2552,7 +2552,7 @@ def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str
         log(f"Updated Profilarr {arr_service.display_name} connection")
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Automate app-to-app connections for the Docker Compose NAS stack.")
+    parser = argparse.ArgumentParser(description="Automate app-to-app connections for the Helianthus stack.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything")
     parser.add_argument("--skip-qbittorrent", action="store_true", help="Skip qBittorrent path and category updates")
     parser.add_argument("--skip-arr", action="store_true", help="Skip Sonarr/Radarr/Lidarr root folders and download clients")

@@ -1,14 +1,31 @@
-# Docker Compose NAS
+```
+⠀⣿⣄⠀⠀⢀⣿⣿⣿⠇⠀⠀⡠⠀⠀⠀⠀⠀⢀⠀⠀⠀⢸⡇⠀⠀⠀⠀⠀⠀⠲⣄⡀⠋⢼⣿⣿⡞⡇⠀⠙⠉⠀⠀⠀⣾⡟⠀⠀⠀⠉⣑⠀⣠⣀⣄⠀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢷⣆⣿⣿⣿⠀⠀⠀⠀⠀⠀
+⣿⣿⣦⠀⠀⠉⠿⡿⠄⠀⠀⢦⣤⠑⢦⣄⠀⣜⠀⠀⠀⢸⠇⠀⠀⠀⠀⠀⠀⠀⠸⣿⣿⣻⣾⣿⣀⣃⠀⠀⠀⣀⣰⣠⡻⣇⢀⣿⠠⢴⣿⣿⣿⡟⣼⣷⣿⠀⢀⡀⠀⡀⠀⠀⠀⠀⠀⠀⣠⣼⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀
+⠻⣿⣿⣷⡀⠀⠀⠀⠀⠀⠈⠀⠆⠀⠈⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⣿⣷⣯⠙⣳⣦⡀⠙⢿⣿⣷⡀⣿⣿⡄⣸⣿⣿⡿⢰⣿⣿⣿⢴⢞⣿⣿⡟⢷⣶⣶⣶⣴⣶⡌⢿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀
+⠀⠈⠻⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⢠⡿⠛⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⡌⣿⣿⣏⣿⠤⢾⣿⢿⣆⢸⣿⣿⣿⣿⣿⣷⣿⣿⣿⣷⣿⣿⣿⣿⣼⣿⣿⣿⣶⣶⠶⢙⣽⣿⣿⣿⠀⠹⣿⣿⠃⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠈⠻⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⡇⠘⣿⣿⡾⢿⣿⣿⣿⣾⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣿⡥⣚⣭⣿⣿⣿⠏⠀⠀⠹⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⢀⣀⡀⠈⠻⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⣿⠀⠸⣿⣿⣿⣶⣿⣿⣿⣿⣿⣿⣿⡏⠻⣿⠏⡟⢹⢹⡟⠉⣿⣿⣿⡿⠟⣚⣡⣬⣭⣿⣾⣋⣀⠀⠀⡀⠀⢈⡥⠀⠀⠀⠀⠀⠀
+⠀⠄⣸⣿⡗⠀⠀⠈⠻⣷⣄⡀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠃⠀⠀⢫⣀⠀⠸⢿⣿⣿⣿⣿⣯⡙⢏⠳⠉⢃⠀⠩⠈⠏⠛⠤⣀⡘⠑⣳⠟⠔⣻⣿⣿⣿⣿⣿⣿⣿⠷⠚⠉⣹⢶⣫⡄⠀⠀⠀⠀⠀⠀
+⢐⣖⣿⣿⠁⠀⠀⠀⠐⠬⠿⣷⣄⠀⢼⣿⣶⣾⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⡴⢾⡿⣞⠷⣿⣿⣿⣿⣿⡿⡆⢱⠔⠂⠀⠀⠀⠀⠀⠀⠀⠁⠒⣅⠐⣫⣿⡿⣿⣿⣿⣿⠟⢑⡶⢛⣿⣽⣽⣵⠷⠒⠀⠀⠀⠀⠀
+⣇⢻⣿⡇⠀⠀⠀⠀⠀⠀⠀⠈⠙⠿⣦⣙⢿⣿⡇⠀⠈⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣏⡿⠒⠉⠲⠌⢲⣉⣽⣷⣿⣷⡍⠛⠀⠀⠀⢀⣄⠀⠀⠐⠤⠀⠉⣌⣸⣽⠾⠛⣻⣿⣿⣿⣿⣿⣷⡾⠽⢉⢿⣠⠇⣀⣤⣤⣀⡀
+⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠙⠿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⢿⡂⠖⣿⣖⣒⣻⣿⣿⣯⣟⠿⠀⠀⠀⠠⢼⣷⢿⣶⡤⠄⠀⠁⡤⢘⣀⣠⣾⣿⣿⠿⠿⠿⠛⠋⣉⠠⠂⣡⠞⡡⠛⡛⢰⠿⣿⡝
+⣿⣿⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣍⣚⠻⣿⣿⣿⣿⣿⡙⠆⠀⠀⠀⠀⠀⠉⠁⠀⠖⢀⠀⠀⡊⡡⣎⣨⣵⣾⣿⣿⣷⣶⣤⣤⠉⣉⣉⠁⠜⠀⠈⢀⣯⢭⣶⣾
+⠙⠿⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⠤⢊⠭⠈⠙⣳⣶⣶⣌⠸⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢧⣧⣍⣱⠿⠾⣛⣛⣻⣭⣿⣿⣿⢊⣍⣲⣶⣀⡒⠋⠡⠉⠉⠄
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⢀⣤⣖⡁⠙⣻⣾⣿⣿⢿⣿⡯⠽⣧⠀⡀⠀⠀⠀⠀⠀⣀⡀⢢⣍⣜⣳⣶⣶⣾⡿⠟⠛⠋⠛⠃⠀⠈⠷⠿⢾⣯⣿⣷⣶⣶⣶⣶
+⠀⠀⠀⠀⠘⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣧⡠⣤⣀⣠⠖⠋⠀⣠⠔⠴⢛⣋⣡⣶⣿⣿⡿⣿⣛⣽⣺⣃⣦⣠⣤⣾⣿⡿⡧⢟⣠⣝⡻⣿⣿⣿⣿⣿⣷⣿⣤⠀⠀⠀⠀⠀⠀⠀⠉⠁⠉⠙⠻
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣿⣿⣿⣷⣄⠙⣷⠾⠗⣚⢀⠀⠜⠡⡿⠿⣋⣭⣴⢾⣿⣿⣿⣿⣿⣷⣿⣭⣦⣧⡷⣾⣿⡿⣿⣿⣶⣭⣻⣿⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣤⣴⣚⣿⠟⡿⣻⣦⣎⠽⠳⠶⠶⢤⣈⡋⠀⠀⣼⡿⠟⠋⠉⣀⠀⣿⡿⣿⣿⣿⣿⡟⣿⣿⣿⣿⣿⣿⣿⠠⣍⡛⠿⣧⣨⡿⢯⡉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⣿⣿⣷⠀⢸⣿⣿⡇⢸⣿⣿⣿⣿⣿⡇⣿⣿⣷⠀⠀⠀⢸⣿⣿⡆⠀⢀⣾⣿⣿⣧⠀⠀⣿⣿⣿⣆⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⢸⣿⣿⡇⢸⣿⣿⡆⠀⣿⣿⣷⢠⣶⣿⣿⣿⣿⡆
+⠀⠀⠀⣿⣿⣿⣤⣼⣿⣿⡇⢸⣿⣿⣧⣤⣤⡀⣿⣿⣿⠀⠀⠀⢸⣿⣿⡇⠀⣼⣿⣿⣿⣿⡆⠀⣿⣿⣿⣿⣾⣿⣿⡇⠀⠀⣿⣿⣿⠀⠀⣿⣿⣿⣤⣼⣿⣿⡇⢸⣿⣿⡇⠀⣿⣿⣿⢿⣿⣿⣤⣬⣙⠃
+⠀⠀⠀⣿⣿⣿⠛⢻⣿⣿⡇⢸⣿⣿⡟⠛⠛⠁⣿⣿⣿⠀⠀⠀⢸⣿⣿⡇⢰⣿⣿⣯⣿⣿⣿⡄⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⣿⣿⣿⠀⠀⣿⣿⣿⠛⢻⣿⣿⡇⢸⣿⣿⡇⢀⣿⣿⡟⢈⡛⠿⢿⣿⣿⣷
+⠀⠀⠀⣿⣿⣿⠀⢸⣿⣿⡇⢸⣿⣿⣷⣶⣶⡆⣿⣿⣿⣶⣶⣶⢸⣿⣿⣧⣿⣿⡟⠛⠛⣿⣿⣷⣿⣿⣿⠘⣿⣿⣿⡇⠀⠀⣿⣿⣿⠀⠀⣿⣿⣿⠀⢸⣿⣿⡇⠘⢿⣿⣷⣾⣿⡿⠃⢿⣿⣷⣶⣿⣿⠟
+⠀⠀⠀⠉⠉⠁⠀⠈⠉⠉⠁⠈⠉⠉⠉⠉⠉⠁⠉⠉⠉⠉⠉⠉⠈⠉⠉⠈⠉⠉⠁⠀⠀⠈⠉⠉⠉⠉⠁⠀⠈⠉⠉⠁⠀⠀⠉⠉⠉⠀⠀⠉⠉⠁⠀⠈⠉⠉⠁⠀⠀⠈⠉⠉⠉⠀⠀⠀⠉⠉⠉⠉⠁
+``` 
+Helianthus is a highly opinionated Docker Compose configuration for hosting a jellyfin media stack
+with the lightest touch possible. 
+Services are exposed privately through Tailscale MagicDNS via TSDProxy.
 
-After searching for the perfect NAS solution, I realized what I wanted could be achieved
-with some Docker containers on a vanilla Linux box. The result is an opinionated Docker Compose configuration capable of
-browsing indexers to retrieve media resources and downloading them through a WireGuard VPN with port forwarding.
-Web applications are exposed privately through TSDProxy and Tailscale MagicDNS.
-
-Requirements: Any Docker-capable recent Linux box with Docker Engine and Docker Compose V2.
-I am running it in Ubuntu Server 22.04; I also tested this setup on a [Synology DS220+ with DSM 7.1](#synology-quirks).
-
-![Docker-Compose NAS Homepage](https://github.com/AdrienPoupa/docker-compose-nas/assets/15086425/3492a9f6-3779-49a5-b052-4193844f16f0)
+Based on the docker-compose-nas project by AdrienPoupa
 
 ## Table of Contents
 
