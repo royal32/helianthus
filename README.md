@@ -153,6 +153,9 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
 | `TSDPROXY_DASHBOARD_PORT`      | Localhost-only diagnostic port for the TSDProxy dashboard.                                                                                                                                             | `8080`                                           |
 | `TSDPROXY_DISABLE_TLS`         | Set `true` in test environments to expose services over tailnet HTTP without requesting TLS certificates. Run `setup-stack.sh` after changing it.                                                       | `false`                                          |
+| `TSDPROXY_WAKE_CHECK_INTERVAL` | Seconds between host clock-gap checks performed by the TSDProxy wake watchdog.                                                                                                                          | `30`                                             |
+| `TSDPROXY_WAKE_THRESHOLD_SECONDS` | Clock gap that indicates the host resumed from sleep and TSDProxy should be restarted.                                                                                                               | `120`                                            |
+| `TSDPROXY_WAKE_GRACE_SECONDS`  | Seconds to wait after detecting host wake before restarting TSDProxy, allowing Docker networking to settle.                                                                                            | `15`                                             |
 | `PROFILARR_START_SCHEDULE`     | Six-field Ofelia 0.3 cron schedule that starts the daily Profilarr work window. The default starts shortly before 3am so Profilarr is ready for jobs scheduled at 3am.                                  | `0 58 2 * * *`                                   |
 | `PROFILARR_RUN_WINDOW`         | How long Profilarr remains available after becoming healthy before Ofelia stops it and its parser.                                                                                                      | `30m`                                            |
 | `ADGUARD_USERNAME`             | Optional - AdGuard Home username override                                                                                                                                                              |                                                  |
@@ -388,6 +391,10 @@ https://jellyfin.<tailnet-domain>
 ```
 
 The TSDProxy dashboard is available privately at `https://tsdproxy-dashboard.<tailnet-domain>` by default, or the equivalent `http://` URL when TLS is disabled. Its diagnostic host port is bound only to `127.0.0.1:8080` by default.
+
+TSDProxy's built-in health monitoring probes Docker backends and re-resolves their target addresses, but its readiness check does not detect embedded `tsnet` registrations that remain stalled after the host resumes from sleep. The always-on `tsdproxy-wake-watchdog` detects a host clock gap, waits for Docker networking to settle, then restarts only TSDProxy. Its persisted identities under `CONFIG_ROOT/tsdproxy/data` are reused, so this does not create replacement tailnet machines or request new certificates.
+
+The wake watchdog requires Docker socket access to restart TSDProxy. Treat it as a privileged infrastructure service.
 
 Container-to-container integrations must continue using Docker DNS names such as `http://sonarr:8989`; do not use Tailscale URLs for internal traffic. Run `python3 scripts/validate-access-config.py` to check for duplicate TSDProxy names, stale Traefik labels, and unsafe proxy port bindings.
 

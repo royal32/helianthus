@@ -342,6 +342,9 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DASHBOARD_PORT" "" "8080"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" "" "./secrets/tsdproxy_authkey"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DISABLE_TLS" "" "false"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_CHECK_INTERVAL" "" "30"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_THRESHOLD_SECONDS" "" "120"
+  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_GRACE_SECONDS" "" "15"
 
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then

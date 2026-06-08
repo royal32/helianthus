@@ -70,6 +70,44 @@ services:
       - tsdproxy.name=tsdproxy-dashboard
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8080/http, no_autodetect
       - tsdproxy.dash.label=TSDProxy
+  tsdproxy-wake-watchdog:
+    image: docker:cli
+    container_name: tsdproxy-wake-watchdog
+    restart: unless-stopped
+    depends_on:
+      tsdproxy:
+        condition: service_started
+    environment:
+      - TSDPROXY_WAKE_CHECK_INTERVAL=${TSDPROXY_WAKE_CHECK_INTERVAL:-30}
+      - TSDPROXY_WAKE_THRESHOLD_SECONDS=${TSDPROXY_WAKE_THRESHOLD_SECONDS:-120}
+      - TSDPROXY_WAKE_GRACE_SECONDS=${TSDPROXY_WAKE_GRACE_SECONDS:-15}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: >-
+      sh -ec '
+        previous_epoch="$$(date +%s)";
+        while sleep "$$TSDPROXY_WAKE_CHECK_INTERVAL"; do
+          current_epoch="$$(date +%s)";
+          elapsed="$$((current_epoch - previous_epoch))";
+          previous_epoch="$$current_epoch";
+          if [ "$$elapsed" -le "$$TSDPROXY_WAKE_THRESHOLD_SECONDS" ]; then
+            continue;
+          fi;
+          echo "Detected a $$elapsed-second host clock gap; restarting TSDProxy after a $$TSDPROXY_WAKE_GRACE_SECONDS-second wake grace";
+          sleep "$$TSDPROXY_WAKE_GRACE_SECONDS";
+          attempt=1;
+          while [ "$$attempt" -le 6 ]; do
+            if docker restart tsdproxy >/dev/null; then
+              echo "Restarted TSDProxy after host wake";
+              break;
+            fi;
+            echo "TSDProxy wake recovery attempt $$attempt failed; retrying in 10 seconds" >&2;
+            attempt="$$((attempt + 1))";
+            sleep 10;
+          done;
+          previous_epoch="$$(date +%s)";
+        done
+      '
   sonarr:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
