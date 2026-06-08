@@ -138,7 +138,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "RADARR_USERNAME",
         "LIDARR_USERNAME",
         "PROWLARR_USERNAME",
-        "ADGUARD_USERNAME",
         "CALIBRE_USERNAME",
         "PAPERLESS_ADMIN_USER",
     ):
@@ -151,7 +150,6 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
         "RADARR_PASSWORD",
         "LIDARR_PASSWORD",
         "PROWLARR_PASSWORD",
-        "ADGUARD_PASSWORD",
         "CALIBRE_PASSWORD",
         "PAPERLESS_ADMIN_PASSWORD",
     ):
@@ -544,20 +542,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "icon": "paperless.png",
             "href": build_external_url(env, "paperless") or "/",
             "description": "Document management",
-        },
-        {
-            "service": "adguardhome",
-            "group": "Utilities",
-            "name": "AdGuard Home",
-            "icon": "adguard-home.png",
-            "href": build_external_url(env, "adguardhome") or "/",
-            "description": "DNS filtering",
-            "widget": {
-                "type": "adguard",
-                "url": "http://adguardhome:3000",
-                "username": env.get("ADGUARD_USERNAME", ""),
-                "password": env.get("ADGUARD_PASSWORD", ""),
-            },
         },
     ]
     services = [service for service in services if service["service"] in running_services]

@@ -14,11 +14,6 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TAILNET_PATTERN = re.compile(r"^[a-z0-9-]+\.ts\.net$")
 ALLOWED_PUBLISHED_PORTS = {
-    ("adguardhome", "53", "tcp"),
-    ("adguardhome", "53", "udp"),
-    ("adguardhome", "68", "tcp"),
-    ("adguardhome", "68", "udp"),
-    ("adguardhome", "853", "tcp"),
     ("jellyfin", "1900", "udp"),
     ("jellyfin", "7359", "udp"),
     ("mosquitto", "1883", "tcp"),

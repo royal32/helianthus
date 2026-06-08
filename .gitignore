@@ -23,9 +23,6 @@ docker-compose.override.yml
 /seerr/*
 !/seerr/Dockerfile
 !/seerr/patch-search.mjs
-/adguardhome/certs
-/adguardhome/conf
-/adguardhome/work
 /sabnzbd
 /calibre-web
 /cleanuparr

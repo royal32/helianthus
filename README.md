@@ -50,10 +50,6 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
     - [SABnzbd](#sabnzbd)
-    - [AdGuard Home](#adguard-home)
-      - [Encryption](#encryption)
-      - [DHCP](#dhcp)
-      - [Expose DNS Server with Tailscale](#expose-dns-server-with-tailscale)
     - [Calibre-Web](#calibre-web)
     - [Decluttarr](#decluttarr)
     - [Tandoor](#tandoor)
@@ -68,7 +64,6 @@ Based on the docker-compose-nas project by AdrienPoupa
     - [Install Synology WireGuard](#install-synology-wireguard)
     - [Free Port 1900](#free-port-1900)
     - [User Permissions](#user-permissions)
-    - [Synology DHCP Server and Adguard Home Port Conflict](#synology-dhcp-server-and-adguard-home-port-conflict)
   - [Use Separate Paths for Torrents and Storage](#use-separate-paths-for-torrents-and-storage)
   - [NFS Share](#nfs-share)
   - [Static IP](#static-ip)
@@ -96,7 +91,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [Lidarr](https://lidarr.audio)                                     | Optional - Music collection manager for Usenet and BitTorrent users<br/>Enable with `COMPOSE_PROFILES=lidarr`                                                 | [linuxserver/lidarr](https://hub.docker.com/r/linuxserver/lidarr)                        | `lidarr.${TAILNET_DOMAIN}` |
 | [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
-| [AdGuard Home](https://adguard.com/en/adguard-home/overview.html)  | Optional - Network-wide software for blocking ads & tracking<br/>Enable with `COMPOSE_PROFILES=adguardhome`                                                   | [adguard/adguardhome](https://hub.docker.com/r/adguard/adguardhome)                      | `adguardhome.${TAILNET_DOMAIN}` |
 | [Tandoor](https://tandoor.dev)                                     | Optional - Smart recipe management<br/>Enable with `COMPOSE_PROFILES=tandoor`                                                                                 | [vabene1111/recipes](https://hub.docker.com/r/vabene1111/recipes)                        | `tandoor.${TAILNET_DOMAIN}` |
 | [Joplin](https://joplinapp.org)                                    | Optional - Note taking application<br/>Enable with `COMPOSE_PROFILES=joplin`                                                                                  | [joplin/server](https://hub.docker.com/r/joplin/server)                                  | `joplin.${TAILNET_DOMAIN}` |
 | [Home Assistant](https://www.home-assistant.io)                    | Optional - Open source home automation that puts local control and privacy first<br/>Enable with `COMPOSE_PROFILES=homeassistant`                             | [home-assistant/home-assistant:stable](https://ghcr.io/home-assistant/home-assistant)    | `homeassistant.${TAILNET_DOMAIN}` |
@@ -162,7 +156,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `adguardhome`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                       |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `sabnzbd`, `tandoor-backup`, `vaultwarden-backup`, etc.)                                                                                      |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
 | `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
@@ -175,8 +169,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `TSDPROXY_WAKE_GRACE_SECONDS`  | Seconds to wait after detecting host wake before restarting TSDProxy, allowing Docker networking to settle.                                                                                            | `15`                                             |
 | `PROFILARR_START_SCHEDULE`     | Six-field Ofelia 0.3 cron schedule that starts the daily Profilarr work window. The default starts shortly before 3am so Profilarr is ready for jobs scheduled at 3am.                                  | `0 58 2 * * *`                                   |
 | `PROFILARR_RUN_WINDOW`         | How long Profilarr remains available after becoming healthy before Ofelia stops it and its parser.                                                                                                      | `30m`                                            |
-| `ADGUARD_USERNAME`             | Optional - AdGuard Home username override                                                                                                                                                              |                                                  |
-| `ADGUARD_PASSWORD`             | Optional - AdGuard Home password override                                                                                                                                                              |                                                  |
 | `QBITTORRENT_USERNAME`         | Optional qBittorrent username override                                                                                                                                                                 |                                                  |
 | `QBITTORRENT_PASSWORD`         | Optional qBittorrent password override                                                                                                                                                                 |                                                  |
 | `SONARR_USERNAME`              | Optional Sonarr username override; blank uses `ADMIN_USERNAME`                                                                                                                                         |                                                  |
@@ -435,7 +427,7 @@ Optional services are not launched by default and enabled by appending their pro
 
 Say you want to enable FlareSolverr, you should have `COMPOSE_PROFILES=flaresolverr`.
 
-Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=flaresolverr,adguardhome`.
+Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=flaresolverr,bazarr`.
 
 ### FlareSolverr
 
@@ -495,42 +487,6 @@ Ofelia requires Docker socket access to start and stop the containers. Treat it 
 ### SABnzbd
 
 Enable SABnzbd by setting `COMPOSE_PROFILES=sabnzbd`. It is available at `https://sabnzbd.${TAILNET_DOMAIN}` and should keep a blank `url_base`.
-
-### AdGuard Home
-
-Enable AdGuard Home by setting `COMPOSE_PROFILES=adguardhome`.
-
-
-On first run, specify port 3000 and enable listening on all interfaces so TSDProxy can reach it.
-
-If after running `docker compose up -d`, you're getting `network docker-compose-nas declared as external, but could not be found`,
-run `docker network create docker-compose-nas` first.
-
-#### DHCP
-
-If you want to use the AdGuard Home DHCP server, for example because your router does not allow changing its DNS server,
-you will need to select the `eth0` DHCP interface matching `10.0.0.10`, then specify the
-Gateway IP to match your router address (`192.168.0.1` for example) and set a range of IP addresses assigned to local
-devices.
-
-In `adguardhome/docker-compose.yml`, set the network interface `dhcp-relay` should listen to. By default, it is set to
-`enp2s0`, but you may need to change it to your host's network interface, verify it with `ip a`.
-
-In the configuration (`adguardhome/conf/AdGuardHome.yaml`), set the DHCP options 6th key to your NAS internal IP address:
-
-```yml
-dhcp:
-  dhcpv4:
-    options:
-      - 6 ips 192.168.0.10,192.168.0.10
-```
-
-Enable DHCP Relay by setting `COMPOSE_PROFILES=adguardhome-dhcp`.
-
-#### Expose DNS Server with Tailscale
-
-Based on [Tailscale's documentation](https://tailscale.com/kb/1114/pi-hole), it is easy to use your AdGuard server everywhere.
-Just make sure that AdGuard Home listens to all interfaces.
 
 ### Calibre-Web
 
@@ -647,14 +603,6 @@ Not updating them may result in [permission issues](https://github.com/AdrienPou
 USER_ID=1026
 GROUP_ID=100
 ```
-
-### Synology DHCP Server and Adguard Home Port Conflict
-
-If you are using the Synology DHCP Server package, it will use port 53 even if it does not need it. This is because
-it uses Dnsmasq to handle DHCP requests, but does not serve DNS queries. The port can be released by editing (as root)
-`/usr/local/lib/systemd/system/pkg-dhcpserver.service` and [adding -p 0](https://www.reddit.com/r/synology/comments/njwdao/comment/j2d23qr/?utm_source=reddit&utm_medium=web2x&context=3):
-`ExecStart=/var/packages/DhcpServer/target/dnsmasq-2.x/usr/bin/dnsmasq --user=DhcpServer --group=DhcpServer --cache-size=200 --conf-file=/etc/dhcpd/dhcpd.conf --dhcp-lease-max=2147483648 -p 0`
-Reboot the NAS and the port 53 will be free for Adguard.
 
 ## Use Separate Paths for Torrents and Storage
 
