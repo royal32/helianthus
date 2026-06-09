@@ -34,7 +34,6 @@ Options:
 
 Examples:
   ./scripts/setup-stack.sh
-  ./scripts/setup-stack.sh --profiles vaultwarden
   ./scripts/setup-stack.sh --set DATA_ROOT=/srv/data --set DOWNLOAD_ROOT=/srv/data/torrents
 EOF
 }
@@ -224,19 +223,6 @@ sync_tsdproxy_access_mode() {
   esac
 }
 
-copy_if_missing() {
-  local source_file="$1"
-  local target_file="$2"
-
-  if [[ -f "$target_file" ]]; then
-    return 0
-  fi
-
-  mkdir -p "$(dirname "$target_file")"
-  cp "$source_file" "$target_file"
-  log "Created ${target_file#$ROOT_DIR/} from template"
-}
-
 prepare_homepage_config() {
   local config_root
   local homepage_config
@@ -255,29 +241,6 @@ prepare_homepage_config() {
       cp "$ROOT_DIR/homepage/$file" "$homepage_config/$file"
     fi
   done
-}
-
-generate_secret() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  else
-    LC_ALL=C od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
-    printf '\n'
-  fi
-}
-
-set_generated_secret_if_blank() {
-  local file="$1"
-  local key="$2"
-  local current_value
-
-  current_value=$(get_env_value "$file" "$key" || true)
-  if [[ -n "$current_value" ]]; then
-    return 0
-  fi
-
-  set_env_value "$file" "$key" "$(generate_secret)"
-  log "Generated $key in ${file#$ROOT_DIR/}"
 }
 
 detect_timezone() {
@@ -302,13 +265,6 @@ detect_timezone() {
   fi
 
   printf '%s' "$timezone"
-}
-
-profile_enabled() {
-  local target="$1"
-  local profiles_csv="$2"
-
-  [[ ",${profiles_csv}," == *",${target},"* ]]
 }
 
 ensure_commands() {
@@ -471,24 +427,6 @@ repair_seerr_config_permissions_with_image() {
   fi
 }
 
-provision_service_envs() {
-  local profiles_csv="$1"
-  local timezone_value="$2"
-  local config_root
-
-  config_root="$(get_config_root)"
-
-  if profile_enabled "vaultwarden" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/vaultwarden/.env.example" "$config_root/vaultwarden/.env"
-  fi
-
-  if profile_enabled "vaultwarden-backup" "$profiles_csv"; then
-    copy_if_missing "$ROOT_DIR/vaultwarden/backup.env.example" "$config_root/vaultwarden/backup.env"
-    set_if_missing_or_default "$config_root/vaultwarden/backup.env" "TIMEZONE" "America/New_York" "$timezone_value"
-  fi
-
-}
-
 validate_compose() {
   (cd "$ROOT_DIR" && docker compose config --quiet)
   (cd "$ROOT_DIR" && python3 ./scripts/validate-access-config.py)
@@ -608,9 +546,6 @@ ensure_tsdproxy_authkey_secret
 ensure_seerr_config_permissions
 clean_appledouble_files
 
-ACTIVE_PROFILES=$(get_env_value "$ENV_FILE" "COMPOSE_PROFILES" || true)
-TIMEZONE_VALUE=$(get_env_value "$ENV_FILE" "TIMEZONE" || printf 'America/New_York')
-provision_service_envs "$ACTIVE_PROFILES" "$TIMEZONE_VALUE"
 validate_compose
 
 if (( SKIP_UP == 0 )); then
@@ -639,5 +574,5 @@ fi
 
 if ! (( SKIP_UP == 1 && SKIP_BOOTSTRAP == 1 && SKIP_CONNECTIONS == 1 && SKIP_WAIT == 1 )); then
   print_setup_complete_banner
-  print_remaining_manual_steps "$ACTIVE_PROFILES"
+  print_remaining_manual_steps
 fi

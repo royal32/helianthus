@@ -429,14 +429,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "href": build_external_url(env, "cleanuparr") or "/",
             "description": "Download cleanup",
         },
-        {
-            "service": "vaultwarden",
-            "group": "Utilities",
-            "name": "Vaultwarden",
-            "icon": "vaultwarden.png",
-            "href": build_external_url(env, "vaultwarden") or "/",
-            "description": "Password manager",
-        },
     ]
     services = [service for service in services if service["service"] in running_services]
     if not services:

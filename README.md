@@ -50,7 +50,6 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
     - [Decluttarr](#decluttarr)
-    - [Vaultwarden](#vaultwarden)
   - [Customization](#customization)
     - [Optional: Using the VPN for \*arr apps](#optional-using-the-vpn-for-arr-apps)
   - [Synology Quirks](#synology-quirks)
@@ -82,7 +81,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [Watchtower](https://watchtower.nickfedor.com)                     | Automated Docker images update                                                                                                                                | [nicholas-fedor/watchtower](https://ghcr.io/nicholas-fedor/watchtower)                   |                        |
 | [Autoheal](https://github.com/willfarrell/docker-autoheal/)        | Monitor and restart unhealthy Docker containers                                                                                                               | [willfarrell/autoheal](https://hub.docker.com/r/willfarrell/autoheal)                    |                        |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
-| [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
 | [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
 | [Cross-Seed](https://github.com/cross-seed/cross-seed)             | Optional - Cross-Seed is a tool for automating the cross-seeding of torrents<br/>Enable with `COMPOSE_PROFILES=cross-seed`                                    | [cross-seed/cross-seed](https://ghcr.io/cross-seed/cross-seed)                           |                        |
 | [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | `autobrr.${TAILNET_DOMAIN}` |
@@ -116,12 +114,6 @@ Every service username defaults to `ADMIN_USERNAME`. Blank per-service password 
 
 Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`. TSDProxy uses that ignored secret file to create a private HTTPS endpoint for each labelled web service. Tailscale normally establishes direct peer-to-peer connections on the LAN, so the same URLs are used locally and remotely.
 
-Common examples:
-
-```shell
-COMPOSE_PROFILES=vaultwarden docker compose up -d
-```
-
 `./scripts/setup-stack.sh` is still available when you want the older wrapper behavior, such as creating `.env`, detecting `USER_ID`, `GROUP_ID`, and `TIMEZONE`, or passing `--set KEY=VALUE`.
 
 The setup automation completes Jellyfin's startup wizard when Jellyfin has no users yet, creates the admin account from `ADMIN_USERNAME` and `GLOBAL_PASSWORD`, applies `JELLYFIN_SERVER_NAME`, seeds Movies, Shows, and Music libraries, and then configures Seerr against Jellyfin.
@@ -139,7 +131,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `vaultwarden-backup`, etc.)                                                                                                                  |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `bazarr`, `homepage`, etc.)                                                                                                                  |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
 | `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
@@ -462,10 +454,6 @@ Decluttarr keeps the queue free of stalled and redundant downloads. For configur
 please see https://github.com/ManiMatter/decluttarr/blob/dev/README.md.
 
 All environment variables are prefixed with `DECLUTTARR_`.
-
-### Vaultwarden
-
-See [here](./vaultwarden/README.md).
 
 ## Customization
 
