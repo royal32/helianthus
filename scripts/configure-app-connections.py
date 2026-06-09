@@ -430,19 +430,6 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
             "description": "Download cleanup",
         },
         {
-            "service": "sabnzbd",
-            "group": "Download",
-            "name": "SABnzbd",
-            "icon": "sabnzbd.png",
-            "href": build_external_url(env, "sabnzbd") or "/",
-            "description": "Usenet downloads",
-            "widget": {
-                "type": "sabnzbd",
-                "url": "http://sabnzbd:8080",
-                "key": env.get("SABNZBD_API_KEY", ""),
-            },
-        },
-        {
             "service": "vaultwarden",
             "group": "Utilities",
             "name": "Vaultwarden",

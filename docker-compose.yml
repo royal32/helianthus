@@ -489,7 +489,6 @@ services:
       - autoheal=true
     profiles:
       - cleanuparr
-      - sabnzbd
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin

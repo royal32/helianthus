@@ -49,7 +49,6 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Tailscale Access](#tailscale-access)
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
-    - [SABnzbd](#sabnzbd)
     - [Decluttarr](#decluttarr)
     - [Vaultwarden](#vaultwarden)
   - [Customization](#customization)
@@ -82,7 +81,6 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [TSDProxy](https://github.com/almeidapaulopt/tsdproxy)             | Tailscale reverse proxy that exposes labelled containers as private MagicDNS HTTPS services                                                                     | [almeidapaulopt/tsdproxy](https://hub.docker.com/r/almeidapaulopt/tsdproxy)              |                        |
 | [Watchtower](https://watchtower.nickfedor.com)                     | Automated Docker images update                                                                                                                                | [nicholas-fedor/watchtower](https://ghcr.io/nicholas-fedor/watchtower)                   |                        |
 | [Autoheal](https://github.com/willfarrell/docker-autoheal/)        | Monitor and restart unhealthy Docker containers                                                                                                               | [willfarrell/autoheal](https://hub.docker.com/r/willfarrell/autoheal)                    |                        |
-| [SABnzbd](https://sabnzbd.org/)                                    | Optional - Free and easy binary newsreader<br/>Enable with `COMPOSE_PROFILES=sabnzbd`                                                                         | [linuxserver/sabnzbd](https://hub.docker.com/r/linuxserver/sabnzbd)                      | `sabnzbd.${TAILNET_DOMAIN}` |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden)          | Optional - Password manager<br/>Enable with `COMPOSE_PROFILES=vaultwarden`                                                                                    | [dani-garcia/vaultwarden](https://ghcr.io/dani-garcia/vaultwarden)                       | `vaultwarden.${TAILNET_DOMAIN}` |
 | [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
@@ -141,7 +139,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `sabnzbd`, `vaultwarden-backup`, etc.)                                                                                                       |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `vaultwarden-backup`, etc.)                                                                                                                  |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.19.0`                                        |
 | `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
@@ -179,7 +177,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `BAZARR_API_KEY`               | Bazarr API key to show information in the homepage                                                                                                                                                     |                                                  |
 | `JELLYFIN_API_KEY`             | Jellyfin API key to show information in the homepage                                                                                                                                                   |                                                  |
 | `SEERR_API_KEY`                | Seer API key to show information in the homepage                                                                                                                                                  |                                                  |
-| `SABNZBD_API_KEY`              | Sabnzbd API key to show information in the homepage                                                                                                                                                    |                                                  |
 | `AUTOBRR_API_KEY`              | Autobrr API key to show information in the homepage                                                                                                                                                    |                                                  |
 | `HOMEPAGE_VAR_TITLE`           | Title of the homepage                                                                                                                                                                                  | `Docker-Compose NAS`                             |
 | `HOMEPAGE_VAR_SEARCH_PROVIDER` | Homepage search provider, [see list here](https://gethomepage.dev/en/widgets/search/)                                                                                                                  | `google`                                         |
@@ -458,10 +455,6 @@ Ofelia remains running and starts both containers at `02:58` each day. After Pro
 Enable the desired schedules in Profilarr itself and target them shortly after 3am. Ofelia controls when Profilarr is available but does not create Profilarr jobs. Change `PROFILARR_START_SCHEDULE` or `PROFILARR_RUN_WINDOW` in `.env` to adjust the window.
 
 Ofelia requires Docker socket access to start and stop the containers. Treat it as a privileged infrastructure service.
-
-### SABnzbd
-
-Enable SABnzbd by setting `COMPOSE_PROFILES=sabnzbd`. It is available at `https://sabnzbd.${TAILNET_DOMAIN}` and should keep a blank `url_base`.
 
 ### Decluttarr
 
