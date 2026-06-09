@@ -362,8 +362,8 @@ services:
     build:
       context: ./qui
       args:
-        QUI_REF: ${QUI_REF:-v1.19.0}
-    image: docker-compose-nas/qui:${QUI_REF:-v1.19.0}-visible-ip
+        QUI_REF: ${QUI_REF:-v1.20.0}
+    image: docker-compose-nas/qui:${QUI_REF:-v1.20.0}-visible-ip
     restart: always
     environment:
       - TZ=${TIMEZONE}

@@ -1,6 +1,6 @@
 FROM alpine/git:2.49.1 AS source
 
-ARG QUI_REF=v1.19.0
+ARG QUI_REF=v1.20.0
 
 RUN git clone --depth 1 --branch "${QUI_REF}" https://github.com/autobrr/qui.git /src
 
@@ -29,7 +29,7 @@ FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.22 AS go-builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG QUI_REF=v1.19.0
+ARG QUI_REF=v1.20.0
 
 WORKDIR /app
 
