@@ -1,5 +1,6 @@
 *.env
-/secrets/
+/secrets/*
+!/secrets/.gitkeep
 .idea
 docker-compose.override.yml
 /runtime

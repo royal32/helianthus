@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "configure-app-connections.py"
+SPEC = importlib.util.spec_from_file_location("reconciler", MODULE_PATH)
+assert SPEC and SPEC.loader
+reconciler = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = reconciler
+SPEC.loader.exec_module(reconciler)
+
+
+class ReconcilerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.original_root = reconciler.ROOT_DIR
+        self.temporary = tempfile.TemporaryDirectory()
+        reconciler.ROOT_DIR = Path(self.temporary.name)
+
+    def tearDown(self) -> None:
+        reconciler.ROOT_DIR = self.original_root
+        self.temporary.cleanup()
+
+    def test_generated_keys_are_discovered_without_modifying_env(self) -> None:
+        root = reconciler.ROOT_DIR
+        (root / "runtime/sonarr").mkdir(parents=True)
+        (root / "runtime/radarr").mkdir(parents=True)
+        (root / "runtime/prowlarr").mkdir(parents=True)
+        (root / "runtime/seerr").mkdir(parents=True)
+        for service, key in (("sonarr", "sonarr-key"), ("radarr", "radarr-key"), ("prowlarr", "prowlarr-key")):
+            (root / f"runtime/{service}/config.xml").write_text(f"<Config><ApiKey>{key}</ApiKey></Config>")
+        (root / "runtime/seerr/settings.json").write_text(
+            json.dumps({"main": {"apiKey": "seerr-key"}, "jellyfin": {"apiKey": "jellyfin-key"}})
+        )
+        env_path = root / ".env"
+        env_path.write_text("GLOBAL_PASSWORD=example\n")
+        before = env_path.read_bytes()
+
+        discovered = reconciler.discover_generated_api_keys({"CONFIG_ROOT": "./runtime"})
+
+        self.assertEqual(discovered["SONARR_API_KEY"], "sonarr-key")
+        self.assertEqual(discovered["SEERR_API_KEY"], "seerr-key")
+        self.assertEqual(env_path.read_bytes(), before)
+
+    def test_reconciler_config_root_override_supports_container_mount(self) -> None:
+        mounted_root = reconciler.ROOT_DIR / "mounted-runtime"
+        with mock.patch.dict("os.environ", {"RECONCILER_CONFIG_ROOT": str(mounted_root)}):
+            self.assertEqual(
+                reconciler.get_config_root({"CONFIG_ROOT": "/host/absolute/runtime"}),
+                mounted_root,
+            )
+
+    def test_atomic_write_is_idempotent(self) -> None:
+        path = reconciler.ROOT_DIR / "generated/config"
+        self.assertTrue(reconciler.write_text_if_changed(path, "value\n", False, mode=0o600))
+        self.assertFalse(reconciler.write_text_if_changed(path, "value\n", False, mode=0o600))
+        self.assertEqual(path.read_text(), "value\n")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_qbittorrent_hash_reuses_matching_hash(self) -> None:
+        first = reconciler.qbit_password_hash("password")
+        second = reconciler.qbit_password_hash("password", first)
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, reconciler.qbit_password_hash("different", first))
+
+    def test_ini_and_yaml_updates_are_idempotent(self) -> None:
+        ini = "[Preferences]\nWebUI\\\\Username=old\n[Other]\nValue=1\n"
+        desired_ini = reconciler.set_ini_section_values(ini, "Preferences", {r"WebUI\Username": "admin"})
+        self.assertEqual(desired_ini, reconciler.set_ini_section_values(desired_ini, "Preferences", {r"WebUI\Username": "admin"}))
+
+        yaml = "general:\n  base_url: /bazarr\nsonarr:\n  ip: old\n"
+        updates = {"general": {"base_url": "''"}, "sonarr": {"ip": "sonarr"}}
+        desired_yaml = reconciler.set_yaml_section_values(yaml, updates)
+        self.assertEqual(desired_yaml, reconciler.set_yaml_section_values(desired_yaml, updates))
+
+    def test_missing_tailnet_domain_produces_no_external_url(self) -> None:
+        self.assertEqual(reconciler.build_external_url({"TAILNET_DOMAIN": ""}, "jellyfin"), "")
+
+    def test_unpackerr_config_uses_discovered_keys(self) -> None:
+        env = {"SONARR_API_KEY": "sonarr-key", "RADARR_API_KEY": "radarr-key"}
+        config = reconciler.unpackerr_config(env, {"sonarr", "radarr"})
+        self.assertIn('api_key = "sonarr-key"', config)
+        self.assertIn('api_key = "radarr-key"', config)
+
+    def test_missing_optional_credentials_stop_only_their_capabilities(self) -> None:
+        running = {"sonarr", "radarr", "vpn", "qbittorrent", "tsdproxy"}
+        with mock.patch.object(reconciler, "run_compose") as run_compose:
+            reconciler.apply_capability_state(
+                {"PIA_USER": "", "PIA_PASS": "", "TAILNET_DOMAIN": ""},
+                running,
+                False,
+            )
+
+        self.assertEqual(running, {"sonarr", "radarr"})
+        run_compose.assert_has_calls(
+            [
+                mock.call(["stop", "qbittorrent", "vpn"], check=False),
+                mock.call(["stop", "tsdproxy"], check=False),
+            ]
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

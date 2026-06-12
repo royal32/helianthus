@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
+import hashlib
 import json
 import os
 import re
@@ -26,6 +28,15 @@ PROWLARR_CONFIG_PATH = ROOT_DIR / "config" / "prowlarr.json"
 SSL_CONTEXT = ssl._create_unverified_context()
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(:-([^}]*))?\}")
 SEERR_MEDIA_SERVER_TYPE_JELLYFIN = 2
+GENERATED_API_KEY_NAMES = (
+    "SONARR_API_KEY",
+    "RADARR_API_KEY",
+    "PROWLARR_API_KEY",
+    "BAZARR_API_KEY",
+    "JELLYFIN_API_KEY",
+    "SEERR_API_KEY",
+    "AUTOBRR_API_KEY",
+)
 
 
 @dataclass(frozen=True)
@@ -153,7 +164,7 @@ def apply_blank_aware_defaults(env: dict[str, str]) -> dict[str, str]:
 
 
 def get_config_root(env: dict[str, str]) -> Path:
-    config_root = env.get("CONFIG_ROOT") or "./runtime"
+    config_root = os.environ.get("RECONCILER_CONFIG_ROOT") or env.get("CONFIG_ROOT") or "./runtime"
     path = Path(config_root)
     if path.is_absolute():
         return path
@@ -167,28 +178,69 @@ def env_bool(env: dict[str, str], key: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def update_env_file_value(env_path: Path, key: str, value: str, dry_run: bool) -> bool:
-    lines = env_path.read_text().splitlines()
-    replacement = f"{key}={value}"
+def write_text_if_changed(
+    path: Path,
+    content: str,
+    dry_run: bool,
+    mode: int | None = None,
+    owner: tuple[int, int] | None = None,
+) -> bool:
+    def set_owner(target: Path) -> None:
+        if owner is None:
+            return
+        try:
+            os.chown(target, *owner)
+        except PermissionError:
+            pass
 
-    for index, line in enumerate(lines):
-        if line.startswith(f"{key}="):
-            if line == replacement:
-                return False
-            if dry_run:
-                log(f"[dry-run] Would update {env_path.name}: {key}")
-                return True
-            lines[index] = replacement
-            env_path.write_text("\n".join(lines) + "\n")
-            return True
-
+    if path.exists() and path.read_text() == content:
+        if mode is not None and not dry_run:
+            path.chmod(mode)
+        if not dry_run:
+            set_owner(path)
+        return False
     if dry_run:
-        log(f"[dry-run] Would append {env_path.name}: {key}")
+        log(f"[dry-run] Would write {path}")
         return True
 
-    lines.append(replacement)
-    env_path.write_text("\n".join(lines) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    temporary_path.write_text(content)
+    if mode is not None:
+        temporary_path.chmod(mode)
+    set_owner(temporary_path)
+    temporary_path.replace(path)
     return True
+
+
+def configured_owner(env: dict[str, str]) -> tuple[int, int]:
+    return int(env.get("USER_ID") or "1000"), int(env.get("GROUP_ID") or "1000")
+
+
+def write_app_text_if_changed(path: Path, content: str, dry_run: bool) -> bool:
+    if not path.exists():
+        return write_text_if_changed(path, content, dry_run)
+    stat = path.stat()
+    return write_text_if_changed(path, content, dry_run, mode=stat.st_mode & 0o777, owner=(stat.st_uid, stat.st_gid))
+
+
+def load_reconciler_state(env: dict[str, str]) -> dict[str, Any]:
+    path = get_config_root(env) / "reconciler" / "state.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def write_reconciler_state(env: dict[str, str], state: dict[str, Any], dry_run: bool) -> None:
+    path = get_config_root(env) / "reconciler" / "state.json"
+    write_text_if_changed(path, json.dumps(state, indent=2, sort_keys=True) + "\n", dry_run, mode=0o600)
+
+
+def secret_fingerprint(*values: str) -> str:
+    return hashlib.sha256("\0".join(values).encode()).hexdigest()
 
 
 def read_xml_text(path: Path, tag_name: str) -> str:
@@ -224,8 +276,7 @@ def read_bazarr_api_key(path: Path) -> str:
     return ""
 
 
-def sync_generated_api_keys(env: dict[str, str], dry_run: bool) -> bool:
-    env_path = ROOT_DIR / ".env"
+def discover_generated_api_keys(env: dict[str, str]) -> dict[str, str]:
     config_root = get_config_root(env)
     discovered = {
         "SONARR_API_KEY": read_xml_text(config_root / "sonarr" / "config.xml", "ApiKey"),
@@ -243,26 +294,253 @@ def sync_generated_api_keys(env: dict[str, str], dry_run: bool) -> bool:
         except json.JSONDecodeError:
             pass
 
-    changed = False
-    for key, value in discovered.items():
-        if not value:
+    return {key: value for key, value in discovered.items() if value}
+
+
+def apply_discovered_api_keys(env: dict[str, str]) -> None:
+    env.update(discover_generated_api_keys(env))
+
+
+def warn_deprecated_generated_env_keys(user_env: dict[str, str]) -> None:
+    deprecated = sorted(key for key in GENERATED_API_KEY_NAMES if user_env.get(key))
+    if deprecated:
+        log(f"Ignoring deprecated generated values in .env: {', '.join(deprecated)}")
+
+
+def qbit_password_hash(password: str, existing: str = "") -> str:
+    match = re.fullmatch(r"@ByteArray\(([^:]+):([^)]+)\)", existing.strip().strip('"'))
+    if match:
+        try:
+            salt = base64.b64decode(match.group(1))
+            expected = base64.b64decode(match.group(2))
+            actual = hashlib.pbkdf2_hmac("sha512", password.encode(), salt, 100000)
+            if actual == expected:
+                return existing.strip().strip('"')
+        except ValueError:
+            pass
+
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha512", password.encode(), salt, 100000)
+    return f"@ByteArray({base64.b64encode(salt).decode()}:{base64.b64encode(digest).decode()})"
+
+
+def set_ini_section_values(content: str, section: str, values: dict[str, str]) -> str:
+    lines = content.splitlines()
+    output: list[str] = []
+    remaining = dict(values)
+    in_section = False
+    saw_section = False
+
+    for line in lines:
+        if line == f"[{section}]":
+            in_section = True
+            saw_section = True
+            output.append(line)
             continue
-        if env.get(key) == value:
+        if line.startswith("[") and line.endswith("]"):
+            if in_section:
+                output.extend(f"{key}={value}" for key, value in remaining.items())
+                remaining.clear()
+            in_section = False
+            output.append(line)
             continue
-        changed = update_env_file_value(env_path, key, value, dry_run) or changed
-        env[key] = value
 
-    if changed:
-        log("Synced generated API keys into .env")
-    return changed
+        if in_section and "=" in line:
+            key = line.split("=", 1)[0]
+            if key in remaining:
+                output.append(f"{key}={remaining.pop(key)}")
+                continue
+        output.append(line)
+
+    if not saw_section:
+        if output and output[-1]:
+            output.append("")
+        output.append(f"[{section}]")
+    if in_section or not saw_section:
+        output.extend(f"{key}={value}" for key, value in remaining.items())
+    return "\n".join(output) + "\n"
 
 
-def reapply_homepage_label_services(running_services: set[str], dry_run: bool) -> None:
-    # Do not run `docker compose up` from inside stack-setup. Relative bind
-    # mounts are resolved from the setup container's /stack directory, which can
-    # recreate app containers against the wrong config tree.
-    if running_services:
-        log("Skipped Homepage label reapply; generated API keys were synced without recreating services")
+def ensure_qbittorrent_credentials(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if "qbittorrent" not in running_services:
+        return
+    config_path = get_config_root(env) / "qbittorrent" / "qBittorrent" / "qBittorrent.conf"
+    if not config_path.exists():
+        log("Skipping qBittorrent credential bootstrap because its config file is not ready")
+        return
+
+    content = config_path.read_text()
+    existing_match = re.search(r"^WebUI\\Password_PBKDF2=(.*)$", content, re.MULTILINE)
+    existing_hash = existing_match.group(1) if existing_match else ""
+    desired = {
+        r"WebUI\Username": env["QBITTORRENT_USERNAME"],
+        r"WebUI\Password_PBKDF2": f'"{qbit_password_hash(env["QBITTORRENT_PASSWORD"], existing_hash)}"',
+        r"WebUI\ServerDomains": "*",
+    }
+    updated = set_ini_section_values(content, "Preferences", desired)
+    if updated == content:
+        log("qBittorrent credentials already match the desired state")
+        return
+    if dry_run:
+        log("[dry-run] Would update qBittorrent credentials")
+        return
+
+    run_compose(["stop", "qbittorrent"], check=False)
+    write_app_text_if_changed(config_path, updated, False)
+    lock_path = config_path.parent / "lockfile"
+    lock_path.unlink(missing_ok=True)
+    run_compose(["start", "qbittorrent"])
+    log("Updated qBittorrent credentials and restarted qBittorrent")
+
+
+def unpackerr_config(env: dict[str, str], running_services: set[str]) -> str:
+    lines = ['interval = "2m"', 'start_delay = "1m"', ""]
+    for arr_service in ARR_SERVICES:
+        api_key = env.get(arr_service.api_key_env, "")
+        if arr_service.service_name not in running_services or not api_key:
+            continue
+        lines.extend(
+            [
+                f"[[{arr_service.service_name}]]",
+                f'url = "{arr_service.internal_base_url}"',
+                f'api_key = "{api_key}"',
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def write_unpackerr_config(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if not profile_enabled(env, "unpackerr") and "unpackerr" not in running_services:
+        return
+    path = get_config_root(env) / "unpackerr" / "unpackerr.conf"
+    changed = write_text_if_changed(
+        path,
+        unpackerr_config(env, running_services),
+        dry_run,
+        mode=0o600,
+        owner=configured_owner(env),
+    )
+    if not changed:
+        log("Unpackerr generated configuration already matches the desired state")
+        return
+    if not dry_run and "unpackerr" in running_services:
+        run_compose(["restart", "unpackerr"], check=False)
+    log("Wrote generated Unpackerr configuration" + ("" if dry_run or "unpackerr" not in running_services else " and restarted Unpackerr"))
+
+
+def set_yaml_section_values(content: str, updates: dict[str, dict[str, str]]) -> str:
+    lines = content.splitlines()
+    current_section = ""
+    output: list[str] = []
+    for line in lines:
+        if line and not line.startswith((" ", "\t", "#")) and line.endswith(":"):
+            current_section = line[:-1]
+        stripped = line.strip()
+        if current_section in updates and line.startswith((" ", "\t")) and ":" in stripped:
+            key = stripped.split(":", 1)[0]
+            if key in updates[current_section]:
+                indentation = line[: len(line) - len(line.lstrip())]
+                line = f"{indentation}{key}: {updates[current_section][key]}"
+        output.append(line)
+    return "\n".join(output) + "\n"
+
+
+def ensure_bazarr_configuration(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    if "bazarr" not in running_services:
+        return
+    config_root = get_config_root(env) / "bazarr" / "config"
+    config_path = config_root / "config" / "config.yaml"
+    database_path = config_root / "db" / "bazarr.db"
+    if not config_path.exists() or not database_path.exists():
+        log("Skipping Bazarr automation because its config or database is not ready")
+        return
+
+    profile_items = json.dumps(
+        [
+            {
+                "id": 1,
+                "language": "en",
+                "audio_exclude": "False",
+                "audio_only_include": "False",
+                "hi": "False",
+                "forced": "False",
+            }
+        ]
+    )
+    with sqlite3.connect(database_path) as connection:
+        existing = connection.execute(
+            'SELECT "profileId", cutoff, "originalFormat", items, "mustContain", "mustNotContain", tag '
+            "FROM table_languages_profiles WHERE name = ?",
+            ("English",),
+        ).fetchone()
+        profile_id = existing[0] if existing else connection.execute(
+            'SELECT COALESCE(MAX("profileId"), 0) + 1 FROM table_languages_profiles'
+        ).fetchone()[0]
+        enabled_languages = connection.execute(
+            "SELECT code2 FROM table_settings_languages WHERE enabled = 1"
+        ).fetchall()
+        unprofiled_shows = connection.execute('SELECT COUNT(*) FROM table_shows WHERE "profileId" IS NULL').fetchone()[0]
+        unprofiled_movies = connection.execute('SELECT COUNT(*) FROM table_movies WHERE "profileId" IS NULL').fetchone()[0]
+        desired_profile = existing is not None and existing[1:] == (65535, 0, profile_items, "[]", "[]", None)
+        database_changed = not desired_profile or enabled_languages != [("en",)] or unprofiled_shows or unprofiled_movies
+
+    config_updates = {
+        "general": {
+            "base_url": "''",
+            "enabled_providers": "[podnapisi]",
+            "movie_default_enabled": "true",
+            "movie_default_profile": str(profile_id),
+            "serie_default_enabled": "true",
+            "serie_default_profile": str(profile_id),
+            "use_radarr": "true",
+            "use_sonarr": "true",
+        },
+        "sonarr": {
+            "apikey": env.get("SONARR_API_KEY", "''") or "''",
+            "base_url": "''",
+            "ip": "sonarr",
+        },
+        "radarr": {
+            "apikey": env.get("RADARR_API_KEY", "''") or "''",
+            "base_url": "''",
+            "ip": "radarr",
+        },
+    }
+    content = config_path.read_text()
+    updated_content = set_yaml_section_values(content, config_updates)
+    config_changed = updated_content != content
+    if not config_changed and not database_changed:
+        log("Bazarr configuration already matches the desired state")
+        return
+    if dry_run:
+        log("[dry-run] Would update Bazarr configuration")
+        return
+
+    run_compose(["stop", "bazarr"], check=False)
+    if database_changed:
+        with sqlite3.connect(database_path) as connection:
+            if existing:
+                connection.execute(
+                    'UPDATE table_languages_profiles SET cutoff = 65535, "originalFormat" = 0, items = ?, '
+                    '"mustContain" = ?, "mustNotContain" = ?, tag = NULL WHERE "profileId" = ?',
+                    (profile_items, "[]", "[]", profile_id),
+                )
+            else:
+                connection.execute(
+                    'INSERT INTO table_languages_profiles '
+                    '("profileId", cutoff, "originalFormat", items, name, "mustContain", "mustNotContain", tag) '
+                    "VALUES (?, 65535, 0, ?, ?, ?, ?, NULL)",
+                    (profile_id, profile_items, "English", "[]", "[]"),
+                )
+            connection.execute("UPDATE table_settings_languages SET enabled = 0")
+            connection.execute("UPDATE table_settings_languages SET enabled = 1 WHERE code2 = ?", ("en",))
+            connection.execute('UPDATE table_shows SET "profileId" = ? WHERE "profileId" IS NULL', (profile_id,))
+            connection.execute('UPDATE table_movies SET "profileId" = ? WHERE "profileId" IS NULL', (profile_id,))
+    if config_changed:
+        write_app_text_if_changed(config_path, updated_content, False)
+    run_compose(["start", "bazarr"])
+    log("Updated Bazarr configuration and restarted Bazarr")
 
 
 def homepage_service_yaml(service: dict[str, Any]) -> str:
@@ -448,15 +726,15 @@ def write_homepage_services(env: dict[str, str], running_services: set[str], dry
     content = "\n".join(content_lines) + "\n"
     docker_content = "---\n# Service discovery is generated in services.yaml after first-run API keys exist.\n"
 
-    if dry_run:
-        log(f"[dry-run] Would write Homepage services to {services_path}")
+    owner = configured_owner(env)
+    services_changed = write_text_if_changed(services_path, content, dry_run, mode=0o600, owner=owner)
+    docker_changed = write_text_if_changed(docker_path, docker_content, dry_run, mode=0o600, owner=owner)
+    if not services_changed and not docker_changed:
+        log("Homepage generated configuration already matches the desired state")
         return
-
-    homepage_dir.mkdir(parents=True, exist_ok=True)
-    services_path.write_text(content)
-    docker_path.write_text(docker_content)
-    run_compose(["restart", "homepage"], check=False)
-    log("Wrote generated Homepage services and restarted Homepage")
+    if not dry_run:
+        run_compose(["restart", "homepage"], check=False)
+    log("Wrote generated Homepage configuration" + ("" if dry_run else " and restarted Homepage"))
 
 
 def next_settings_id(items: list[dict[str, Any]]) -> int:
@@ -807,18 +1085,25 @@ class ArrApi:
     def get_root_folders(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/rootfolder") or []
 
-    def configure_authentication(self, username: str, password: str) -> None:
+    def configure_authentication(self, username: str, password: str) -> bool:
         host_config = self.client.request_json("GET", f"{self.api_base}/config/host")
+        desired_nonsecret = {
+            "urlBase": "",
+            "authenticationMethod": "forms",
+            "authenticationRequired": "enabled",
+            "username": username,
+        }
+        if all(str(host_config.get(key, "")).lower() == str(value).lower() for key, value in desired_nonsecret.items()):
+            return False
         host_config.update(
             {
-                "authenticationMethod": "forms",
-                "authenticationRequired": "enabled",
-                "username": username,
+                **desired_nonsecret,
                 "password": password,
                 "passwordConfirmation": password,
             }
         )
         self.client.request_json("PUT", f"{self.api_base}/config/host", payload=host_config)
+        return True
 
     def get_quality_profiles(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/qualityprofile") or []
@@ -897,18 +1182,25 @@ class ProwlarrApi:
     def get_indexer_schema(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", "/api/v1/indexer/schema") or []
 
-    def configure_authentication(self, username: str, password: str) -> None:
+    def configure_authentication(self, username: str, password: str) -> bool:
         host_config = self.client.request_json("GET", "/api/v1/config/host")
+        desired_nonsecret = {
+            "urlBase": "",
+            "authenticationMethod": "forms",
+            "authenticationRequired": "enabled",
+            "username": username,
+        }
+        if all(str(host_config.get(key, "")).lower() == str(value).lower() for key, value in desired_nonsecret.items()):
+            return False
         host_config.update(
             {
-                "authenticationMethod": "forms",
-                "authenticationRequired": "enabled",
-                "username": username,
+                **desired_nonsecret,
                 "password": password,
                 "passwordConfirmation": password,
             }
         )
         self.client.request_json("PUT", "/api/v1/config/host", payload=host_config)
+        return True
 
     def get_schema(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", "/api/v1/applications/schema") or []
@@ -1547,24 +1839,22 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
         return
 
     settings_path = get_config_root(env) / "seerr" / "settings.json"
+    if not settings_path.exists():
+        log("Skipping Seerr automation because its settings file is not ready")
+        return
     settings = json.loads(settings_path.read_text())
     settings_changed = False
-    env_changed = False
 
     if "jellyfin" in running_services:
         settings = ensure_seerr_jellyfin_admin_setup(settings_path, settings, env, dry_run)
 
     seerr_api_key = settings.get("main", {}).get("apiKey", "")
     if seerr_api_key:
-        env_changed = update_env_file_value(ROOT_DIR / ".env", "SEERR_API_KEY", seerr_api_key, dry_run) or env_changed
-        if env_changed:
-            env["SEERR_API_KEY"] = seerr_api_key
+        env["SEERR_API_KEY"] = seerr_api_key
 
     jellyfin_api_key = settings.get("jellyfin", {}).get("apiKey", "")
     if jellyfin_api_key:
-        env_changed = update_env_file_value(ROOT_DIR / ".env", "JELLYFIN_API_KEY", jellyfin_api_key, dry_run) or env_changed
-        if env_changed:
-            env["JELLYFIN_API_KEY"] = jellyfin_api_key
+        env["JELLYFIN_API_KEY"] = jellyfin_api_key
 
     seerr_application_url = build_external_url(env, "seerr")
     if seerr_application_url and settings.get("main", {}).get("applicationUrl") != seerr_application_url:
@@ -1625,10 +1915,7 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
     if settings_changed:
         settings_path.write_text(json.dumps(settings, indent=1) + "\n")
 
-    if env_changed:
-        run_compose(["restart", "seerr"])
-        log("Updated Seerr API key in .env and restarted Seerr")
-    elif settings_changed:
+    if settings_changed:
         run_compose(["restart", "seerr"])
         log("Updated Seerr settings and restarted Seerr")
     else:
@@ -1636,7 +1923,7 @@ def ensure_seerr_integrations(env: dict[str, str], running_services: set[str], d
 
 
 def ensure_directory(service: str, path: str, dry_run: bool) -> None:
-    command = f"mkdir -p {shlex.quote(path)} && chown -R abc:abc {shlex.quote(path)}"
+    command = f"mkdir -p {shlex.quote(path)} && chown abc:abc {shlex.quote(path)}"
     exec_in_service(service, command, dry_run)
 
 
@@ -1720,6 +2007,7 @@ def ensure_qui_qbittorrent_instance(
     api: QuiApi,
     env: dict[str, str],
     running_services: set[str],
+    state: dict[str, Any],
 ) -> None:
     if "qbittorrent" not in running_services:
         log("Skipping qui qBittorrent connection because qBittorrent is not running")
@@ -1742,6 +2030,14 @@ def ensure_qui_qbittorrent_instance(
         ),
         None,
     )
+    desired_fingerprint = secret_fingerprint(env["QBITTORRENT_USERNAME"], env["QBITTORRENT_PASSWORD"])
+    core_matches = existing is not None and all(
+        existing.get(key) == instance_payload[key]
+        for key in ("name", "host", "username", "hasLocalFilesystemAccess")
+    )
+    if core_matches and state.get("qui_qbittorrent_credentials") == desired_fingerprint:
+        log("qui qBittorrent connection already matches the desired state")
+        return
 
     if existing:
         instance = api.update_instance(int(existing["id"]), instance_payload)
@@ -1753,10 +2049,11 @@ def ensure_qui_qbittorrent_instance(
     connection = api.test_instance(int(instance["id"]))
     if not connection.get("connected"):
         raise RuntimeError(f"qui could not connect to qBittorrent: {connection.get('error') or connection}")
+    state["qui_qbittorrent_credentials"] = desired_fingerprint
     log("Verified qui qBittorrent connection")
 
 
-def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str]) -> None:
+def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str], state: dict[str, Any]) -> None:
     prowlarr_api_key = env.get("PROWLARR_API_KEY", "").strip()
     if not prowlarr_api_key:
         log("Skipping qui Prowlarr indexer discovery because PROWLARR_API_KEY is empty")
@@ -1776,6 +2073,8 @@ def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str]) -> None:
         for indexer in api.get_indexers()
         if indexer.get("name")
     }
+    desired_fingerprint = secret_fingerprint(prowlarr_api_key)
+    key_matches = state.get("qui_prowlarr_api_key") == desired_fingerprint
     synced = 0
 
     for discovered in discovered_indexers:
@@ -1794,6 +2093,13 @@ def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str]) -> None:
             "categories": discovered.get("categories") or [],
         }
         existing = existing_by_name.get(name)
+        core_matches = existing is not None and all(
+            str(existing.get(key, "")) == str(payload[key])
+            for key in ("base_url", "backend", "indexer_id")
+        )
+        if core_matches and key_matches:
+            log(f"qui Prowlarr indexer {name} already matches the desired state")
+            continue
         if existing:
             indexer = api.update_indexer(int(existing["id"]), payload)
             log(f"Updated qui Prowlarr indexer {name}")
@@ -1809,10 +2115,16 @@ def ensure_qui_prowlarr_indexers(api: QuiApi, env: dict[str, str]) -> None:
         except RuntimeError as exc:
             log(f"qui Prowlarr indexer {name} test warning: {exc}")
 
+    state["qui_prowlarr_api_key"] = desired_fingerprint
     log(f"Synced {synced} Prowlarr indexer(s) into qui")
 
 
-def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+def ensure_qui_integration(
+    env: dict[str, str],
+    running_services: set[str],
+    state: dict[str, Any],
+    dry_run: bool,
+) -> None:
     if "qui" not in running_services:
         return
     if "prowlarr" not in running_services:
@@ -1841,8 +2153,8 @@ def ensure_qui_integration(env: dict[str, str], running_services: set[str], dry_
                 "reset qui or restore the credentials previously used by setup"
             ) from exc
 
-    ensure_qui_qbittorrent_instance(api, env, running_services)
-    ensure_qui_prowlarr_indexers(api, env)
+    ensure_qui_qbittorrent_instance(api, env, running_services, state)
+    ensure_qui_prowlarr_indexers(api, env, state)
 
 
 def ensure_arr_root_folder(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
@@ -1863,6 +2175,9 @@ def ensure_arr_root_folder(arr_api: ArrApi, env: dict[str, str], dry_run: bool) 
 
 
 def ensure_arr_download_client(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
+    if not env_bool(env, "DOWNLOADS_AVAILABLE", False):
+        log(f"Skipping {arr_api.service.display_name} qBittorrent client because download capability is unavailable")
+        return
     schema = schema_by_implementation(arr_api.get_download_client_schema(), "QBittorrent")
     field_overrides = {
         "host": "vpn",
@@ -2281,8 +2596,12 @@ def ensure_arr_integrations(env: dict[str, str], running_services: set[str], dry
             log(f"[dry-run] Would configure {arr_service.display_name} forms authentication")
         else:
             prefix = arr_service.service_name.upper()
-            arr_api.configure_authentication(env[f"{prefix}_USERNAME"], env[f"{prefix}_PASSWORD"])
-            log(f"Configured {arr_service.display_name} forms authentication")
+            changed = arr_api.configure_authentication(env[f"{prefix}_USERNAME"], env[f"{prefix}_PASSWORD"])
+            log(
+                f"Configured {arr_service.display_name} forms authentication"
+                if changed
+                else f"{arr_service.display_name} authentication already matches the desired state"
+            )
         ensure_arr_root_folder(arr_api, env, dry_run)
         ensure_arr_download_client(arr_api, env, dry_run)
 
@@ -2301,8 +2620,8 @@ def ensure_prowlarr_integrations(env: dict[str, str], running_services: set[str]
     if dry_run:
         log("[dry-run] Would configure Prowlarr forms authentication")
     else:
-        prowlarr_api.configure_authentication(env["PROWLARR_USERNAME"], env["PROWLARR_PASSWORD"])
-        log("Configured Prowlarr forms authentication")
+        changed = prowlarr_api.configure_authentication(env["PROWLARR_USERNAME"], env["PROWLARR_PASSWORD"])
+        log("Configured Prowlarr forms authentication" if changed else "Prowlarr authentication already matches the desired state")
     ensure_prowlarr_config_resources(prowlarr_api, env, running_services, dry_run)
     for arr_service in ARR_SERVICES:
         if arr_service.service_name not in running_services:
@@ -2404,6 +2723,100 @@ def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str
         profilarr_api.update_arr_instance(existing["id"], desired, existing["library_refresh_interval"])
         log(f"Updated Profilarr {arr_service.display_name} connection")
 
+
+def apply_capability_state(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
+    downloads_configured = bool(env.get("PIA_USER") and env.get("PIA_PASS"))
+    env["DOWNLOADS_AVAILABLE"] = "true" if downloads_configured and "qbittorrent" in running_services else "false"
+    if not downloads_configured:
+        log("Download capability unavailable: PIA_USER and PIA_PASS are not configured")
+        if not dry_run:
+            run_compose(["stop", "qbittorrent", "vpn"], check=False)
+            running_services.difference_update({"qbittorrent", "vpn"})
+            log("Stopped download services until PIA credentials are configured")
+    elif "qbittorrent" not in running_services:
+        log("Download capability unavailable: qBittorrent is not running")
+
+    if not build_external_url(env, "jellyfin"):
+        log("Remote access URLs unavailable: TAILNET_DOMAIN is not configured")
+
+    authkey_path = ROOT_DIR / "secrets" / "tsdproxy_authkey"
+    if not authkey_path.exists() or not authkey_path.read_text().strip():
+        log("Remote access unavailable: Tailscale auth key is not configured")
+        if not dry_run:
+            run_compose(["stop", "tsdproxy"], check=False)
+            running_services.discard("tsdproxy")
+            log("Stopped TSDProxy until a Tailscale auth key is configured")
+
+
+def run_phase(name: str, operation: Any, failures: list[str]) -> None:
+    try:
+        operation()
+    except Exception as exc:
+        failures.append(name)
+        log(f"{name} reconciliation failed; it will be retried later: {exc}")
+
+
+def reconcile(args: argparse.Namespace) -> int:
+    template_env = parse_env_file(ROOT_DIR / ".env.example")
+    user_env = parse_env_file(ROOT_DIR / ".env")
+    warn_deprecated_generated_env_keys(user_env)
+    for key in GENERATED_API_KEY_NAMES:
+        template_env.pop(key, None)
+        user_env.pop(key, None)
+
+    env = {**template_env, **user_env}
+    env = resolve_env_values(env)
+    env = apply_blank_aware_defaults(env)
+    running_services = compose_running_services()
+    apply_capability_state(env, running_services, args.dry_run)
+    apply_discovered_api_keys(env)
+    state = load_reconciler_state(env)
+    failures: list[str] = []
+
+    phases: list[tuple[str, Any]] = []
+    if not args.skip_qbittorrent:
+        phases.extend(
+            [
+                ("qBittorrent credential bootstrap", lambda: ensure_qbittorrent_credentials(env, running_services, args.dry_run)),
+                ("qBittorrent paths and categories", lambda: ensure_qbittorrent_paths_and_categories(env, running_services, args.dry_run)),
+            ]
+        )
+    if not args.skip_arr:
+        phases.append(("Sonarr and Radarr", lambda: ensure_arr_integrations(env, running_services, args.dry_run)))
+        phases.append(("Bazarr", lambda: ensure_bazarr_configuration(env, running_services, args.dry_run)))
+    if not args.skip_prowlarr:
+        phases.append(("Prowlarr", lambda: ensure_prowlarr_integrations(env, running_services, args.dry_run)))
+    if not args.skip_qui:
+        phases.append(("qui", lambda: ensure_qui_integration(env, running_services, state, args.dry_run)))
+    if not args.skip_jellyfin:
+        phases.append(("Jellyfin", lambda: ensure_jellyfin_setup(env, running_services, args.dry_run)))
+    if not args.skip_seerr:
+        phases.append(("Seerr", lambda: ensure_seerr_integrations(env, running_services, args.dry_run)))
+
+    for name, operation in phases:
+        run_phase(name, operation, failures)
+
+    apply_discovered_api_keys(env)
+    trailing_phases: list[tuple[str, Any]] = []
+    if not args.skip_profilarr:
+        trailing_phases.append(("Profilarr", lambda: ensure_profilarr_integrations(env, running_services, args.dry_run)))
+    trailing_phases.extend(
+        [
+            ("Unpackerr generated configuration", lambda: write_unpackerr_config(env, running_services, args.dry_run)),
+            ("Homepage generated configuration", lambda: write_homepage_services(env, running_services, args.dry_run)),
+        ]
+    )
+    for name, operation in trailing_phases:
+        run_phase(name, operation, failures)
+    write_reconciler_state(env, state, args.dry_run)
+
+    if failures:
+        log(f"Reconciliation completed with deferred failures: {', '.join(failures)}")
+    else:
+        log("Reconciliation complete")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Automate app-to-app connections for the Helianthus stack.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything")
@@ -2418,41 +2831,23 @@ def main() -> int:
         help="Skip qui initial setup, qBittorrent connection, and Prowlarr indexer discovery",
     )
     parser.add_argument("--skip-profilarr", action="store_true", help="Skip Profilarr Sonarr/Radarr connections")
+    parser.add_argument("--loop", action="store_true", help="Reconcile periodically instead of exiting after one pass")
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=int(os.environ.get("RECONCILE_INTERVAL_SECONDS", "900")),
+        help="Seconds between periodic reconciliation passes (default: 900)",
+    )
     args = parser.parse_args()
+    if args.interval < 10:
+        parser.error("--interval must be at least 10 seconds")
 
-    env = parse_env_file(ROOT_DIR / ".env.example")
-    env.update(parse_env_file(ROOT_DIR / ".env"))
-    env = resolve_env_values(env)
-    env = apply_blank_aware_defaults(env)
-    running_services = compose_running_services()
-
-    if not args.skip_qbittorrent:
-        ensure_qbittorrent_paths_and_categories(env, running_services, args.dry_run)
-
-    if not args.skip_arr:
-        ensure_arr_integrations(env, running_services, args.dry_run)
-
-    if not args.skip_prowlarr:
-        ensure_prowlarr_integrations(env, running_services, args.dry_run)
-
-    if not args.skip_qui:
-        ensure_qui_integration(env, running_services, args.dry_run)
-
-    if not args.skip_jellyfin:
-        ensure_jellyfin_setup(env, running_services, args.dry_run)
-
-    if not args.skip_seerr:
-        ensure_seerr_integrations(env, running_services, args.dry_run)
-
-    if not args.skip_profilarr:
-        ensure_profilarr_integrations(env, running_services, args.dry_run)
-
-    sync_generated_api_keys(env, args.dry_run)
-    reapply_homepage_label_services(running_services, args.dry_run)
-    write_homepage_services(env, running_services, args.dry_run)
-
-    log("App connection automation complete")
-    return 0
+    while True:
+        reconcile(args)
+        if not args.loop:
+            return 0
+        log(f"Next reconciliation pass in {args.interval} seconds")
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":

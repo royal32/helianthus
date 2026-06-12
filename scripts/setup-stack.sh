@@ -6,11 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
 ENV_TEMPLATE="$ROOT_DIR/.env.example"
-WAIT_TIMEOUT=300
 SKIP_UP=0
-SKIP_BOOTSTRAP=0
-SKIP_CONNECTIONS=0
-SKIP_WAIT=0
 PROFILES_OVERRIDE=""
 SET_OVERRIDES=()
 
@@ -25,11 +21,7 @@ and running the first-run post-start configuration.
 Options:
   --profiles <csv>        Set COMPOSE_PROFILES in .env
   --set KEY=VALUE         Override a root .env variable, can be used multiple times
-  --wait-timeout <secs>   Health wait timeout in seconds (default: 300)
   --no-up                 Skip docker compose up -d
-  --no-bootstrap          Skip ./scripts/update-config.sh
-  --no-connections        Skip automated app-to-app connection setup
-  --no-wait               Skip waiting for container health
   --help                  Show this help
 
 Examples:
@@ -301,7 +293,6 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "TIMEZONE" "America/New_York" "$(detect_timezone)"
   set_if_missing_or_default "$ENV_FILE" "CONFIG_ROOT" "." "./runtime"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DASHBOARD_PORT" "" "8080"
-  set_if_missing_or_default "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" "" "./secrets/tsdproxy_authkey"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_DISABLE_TLS" "" "false"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_CHECK_INTERVAL" "" "30"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_THRESHOLD_SECONDS" "" "120"
@@ -375,10 +366,7 @@ ensure_tsdproxy_authkey_secret() {
   local authkey_path
   local legacy_authkey
 
-  authkey_path=$(get_env_value "$ENV_FILE" "TSDPROXY_AUTHKEY_PATH" || printf './secrets/tsdproxy_authkey')
-  if [[ "$authkey_path" != /* ]]; then
-    authkey_path="$ROOT_DIR/${authkey_path#./}"
-  fi
+  authkey_path="$ROOT_DIR/secrets/tsdproxy_authkey"
 
   mkdir -p "$(dirname "$authkey_path")"
   chmod 700 "$(dirname "$authkey_path")"
@@ -409,68 +397,10 @@ clean_appledouble_files() {
   find "$config_root" -name '._*' -delete 2>/dev/null || true
 }
 
-ensure_seerr_config_permissions() {
-  local seerr_config_dir
-
-  seerr_config_dir="$(get_config_root)/seerr"
-
-  mkdir -p "$seerr_config_dir/logs"
-  chmod -R a+rwX "$seerr_config_dir"
-}
-
-repair_seerr_config_permissions_with_image() {
-  if docker compose run --rm --no-deps --label tsdproxy.enable=false --user root --entrypoint sh seerr -lc \
-    'mkdir -p /app/config/logs && chmod -R a+rwX /app/config' >/dev/null 2>&1; then
-    log "Repaired Seerr config volume permissions"
-  else
-    warn "Seerr config volume permission repair used host chmod fallback only"
-  fi
-}
-
 validate_compose() {
   (cd "$ROOT_DIR" && docker compose config --quiet)
   (cd "$ROOT_DIR" && python3 ./scripts/validate-access-config.py)
   log "Compose configuration is valid"
-}
-
-wait_for_stack() {
-  local deadline
-  local container_id
-  local status_line
-  local status_value
-  local pending_count
-
-  deadline=$((SECONDS + WAIT_TIMEOUT))
-
-  while (( SECONDS < deadline )); do
-    pending_count=0
-
-    while IFS= read -r container_id; do
-      [[ -n "$container_id" ]] || continue
-      status_line=$(docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")
-      status_value="${status_line##* }"
-
-      case "$status_value" in
-        healthy|running)
-          ;;
-        starting|created)
-          pending_count=$((pending_count + 1))
-          ;;
-        *)
-          die "Container status check failed: $status_line"
-          ;;
-      esac
-    done < <(cd "$ROOT_DIR" && docker compose ps -q)
-
-    if (( pending_count == 0 )); then
-      log "All running compose services are healthy"
-      return 0
-    fi
-
-    sleep 5
-  done
-
-  die "Timed out waiting for compose services to become healthy"
 }
 
 print_remaining_manual_steps() {
@@ -507,25 +437,8 @@ while (( $# > 0 )); do
       SET_OVERRIDES+=("$2")
       shift 2
       ;;
-    --wait-timeout)
-      [[ $# -ge 2 ]] || die "--wait-timeout requires a value"
-      WAIT_TIMEOUT="$2"
-      shift 2
-      ;;
     --no-up)
       SKIP_UP=1
-      shift
-      ;;
-    --no-bootstrap)
-      SKIP_BOOTSTRAP=1
-      shift
-      ;;
-    --no-connections)
-      SKIP_CONNECTIONS=1
-      shift
-      ;;
-    --no-wait)
-      SKIP_WAIT=1
       shift
       ;;
     --help|-h)
@@ -543,36 +456,16 @@ ensure_root_env
 apply_root_overrides
 sync_tsdproxy_access_mode
 ensure_tsdproxy_authkey_secret
-ensure_seerr_config_permissions
 clean_appledouble_files
 
 validate_compose
 
 if (( SKIP_UP == 0 )); then
   log "Starting compose stack"
-  (cd "$ROOT_DIR" && docker compose up -d --scale stack-setup=0)
-  repair_seerr_config_permissions_with_image
+  (cd "$ROOT_DIR" && docker compose up -d)
 fi
 
-if (( SKIP_BOOTSTRAP == 0 )); then
-  log "Running first-run post-start configuration"
-  (cd "$ROOT_DIR" && ./scripts/update-config.sh)
-fi
-
-if (( SKIP_WAIT == 0 )); then
-  wait_for_stack
-fi
-
-if (( SKIP_CONNECTIONS == 0 )); then
-  log "Automating app-to-app connections"
-  (cd "$ROOT_DIR" && python3 ./scripts/configure-app-connections.py)
-fi
-
-if (( SKIP_WAIT == 0 )); then
-  wait_for_stack
-fi
-
-if ! (( SKIP_UP == 1 && SKIP_BOOTSTRAP == 1 && SKIP_CONNECTIONS == 1 && SKIP_WAIT == 1 )); then
+if (( SKIP_UP == 0 )); then
   print_setup_complete_banner
   print_remaining_manual_steps
 fi

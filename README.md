@@ -99,7 +99,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Bazarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service and an always-on `stack-reconciler`. They idempotently create and repair the qBittorrent, qui, Sonarr, Radarr, Bazarr, Prowlarr, Profilarr, Jellyfin, Seerr, Homepage, and Unpackerr configuration and wiring. Generated application API keys are discovered from application state and are never written into `.env`.
 
 Bazarr is enabled in the initial stack, connected to Sonarr and Radarr, and configured with Podnapisi plus an English-only language profile. The English profile is applied automatically to new series and movies and to existing items that do not already have a profile.
 
@@ -116,6 +116,8 @@ Every service username defaults to `ADMIN_USERNAME`. Blank per-service password 
 
 Create a reusable Tailscale auth key and write it to `secrets/tsdproxy_authkey`. TSDProxy uses that ignored secret file to create a private HTTPS endpoint for each labelled web service. Tailscale normally establishes direct peer-to-peer connections on the LAN, so the same URLs are used locally and remotely.
 
+PIA and Tailscale configuration are optional capabilities. Without PIA credentials, the reconciler stops VPN-backed download services while continuing to configure the media applications. Without a Tailscale auth key, it stops TSDProxy while internal applications continue running. A blank `TAILNET_DOMAIN` disables generated external URLs without affecting internal integrations. Add the missing values and rerun `docker compose up -d` to enable the capability.
+
 `./scripts/setup-stack.sh` is still available when you want the older wrapper behavior, such as creating `.env`, detecting `USER_ID`, `GROUP_ID`, and `TIMEZONE`, or passing `--set KEY=VALUE`.
 
 The setup automation completes Jellyfin's startup wizard when Jellyfin has no users yet, creates the admin account from `ADMIN_USERNAME` and `GLOBAL_PASSWORD`, applies `JELLYFIN_SERVER_NAME`, seeds Movies, Shows, and Music libraries, and then configures Seerr against Jellyfin.
@@ -126,7 +128,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | `DATA_ROOT`                    | Host location of the data files                                                                                                                                                                        | `/mnt/data`                                      |
 | `DOWNLOAD_ROOT`                | Host download location for qBittorrent, should be a subfolder of `DATA_ROOT`                                                                                                                           | `/mnt/data/torrents`                             |
-| `CONFIG_ROOT`                  | Host location for generated service config, app databases, and other resettable runtime state                                                                                                           | `./runtime`                                      |
+| `CONFIG_ROOT`                  | Relative or absolute host location for generated service config, app databases, and other resettable runtime state                                                                                       | `./runtime`                                      |
 | `PIA_LOCATION`                 | Servers to use for PIA. [see list here](https://serverlist.piaservers.net/vpninfo/servers/v6)                                                                                                          | `ca` (Montreal, Canada)                          |
 | `PIA_USER`                     | PIA username                                                                                                                                                                                           |                                                  |
 | `PIA_PASS`                     | PIA password                                                                                                                                                                                           |                                                  |
@@ -137,7 +139,6 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.20.0`                                        |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
-| `TSDPROXY_AUTHKEY_PATH`        | Host path to the ignored file containing a reusable Tailscale auth key.                                                                                                                                | `./secrets/tsdproxy_authkey`                     |
 | `TSDPROXY_DASHBOARD_PORT`      | Localhost-only diagnostic port for the TSDProxy dashboard.                                                                                                                                             | `8080`                                           |
 | `TSDPROXY_DISABLE_TLS`         | Set `true` in test environments to expose services over tailnet HTTP without requesting TLS certificates. Run `setup-stack.sh` after changing it.                                                       | `false`                                          |
 | `TSDPROXY_WAKE_CHECK_INTERVAL` | Seconds between host clock-gap checks performed by the TSDProxy wake watchdog.                                                                                                                          | `30`                                             |
@@ -164,13 +165,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `RADARR_DOWNLOAD_PATH`         | qBittorrent save path used for Radarr-managed downloads                                                                                                                                                | `/data/torrents/movies`                          |
 | `SONARR_QBIT_CATEGORY`         | qBittorrent category configured for Sonarr                                                                                                                                                              | `tv-sonarr`                                      |
 | `RADARR_QBIT_CATEGORY`         | qBittorrent category configured for Radarr                                                                                                                                                              | `radarr`                                         |
-| `SONARR_API_KEY`               | Sonarr API key to show information in the homepage                                                                                                                                                     |                                                  |
-| `RADARR_API_KEY`               | Radarr API key to show information in the homepage                                                                                                                                                     |                                                  |
-| `PROWLARR_API_KEY`             | Prowlarr API key to show information in the homepage                                                                                                                                                   |                                                  |
-| `BAZARR_API_KEY`               | Bazarr API key to show information in the homepage                                                                                                                                                     |                                                  |
-| `JELLYFIN_API_KEY`             | Jellyfin API key to show information in the homepage                                                                                                                                                   |                                                  |
-| `SEERR_API_KEY`                | Seer API key to show information in the homepage                                                                                                                                                  |                                                  |
-| `AUTOBRR_API_KEY`              | Autobrr API key to show information in the homepage                                                                                                                                                    |                                                  |
+| `RECONCILE_INTERVAL_SECONDS`   | Seconds between periodic configuration reconciliation passes                                                                                                                                           | `900`                                            |
 | `HOMEPAGE_VAR_TITLE`           | Title of the homepage                                                                                                                                                                                  | `Docker-Compose NAS`                             |
 | `HOMEPAGE_VAR_SEARCH_PROVIDER` | Homepage search provider, [see list here](https://gethomepage.dev/en/widgets/search/)                                                                                                                  | `google`                                         |
 | `HOMEPAGE_VAR_HEADER_STYLE`    | Homepage header style, [see list here](https://gethomepage.dev/en/configs/settings/#header-style)                                                                                                      | `boxed`                                          |
@@ -265,7 +260,7 @@ Their API keys can be found in Settings > Security > API Key.
 
 ## qBittorrent
 
-Running `scripts/update-config.sh` will set qBittorrent's username to `QBITTORRENT_USERNAME` or `ADMIN_USERNAME`, and its password to `QBITTORRENT_PASSWORD` or `GLOBAL_PASSWORD`. If you wish to update the password manually,
+The reconciler sets qBittorrent's username to `QBITTORRENT_USERNAME` or `ADMIN_USERNAME`, and its password to `QBITTORRENT_PASSWORD` or `GLOBAL_PASSWORD`. If you wish to update the password manually,
 since qBittorrent v4.6.2, a temporary password is generated on startup. Get it with `docker compose logs qbittorrent`:
 
 ```
@@ -317,13 +312,13 @@ Jellyseer gives you content recommendations, allows others to make requests to y
 
 It is exposed at `https://seerr.${TAILNET_DOMAIN}` and runs at the root path like every other TSDProxy service.
 
-`docker compose up` now preconfigures Seerr's Sonarr and Radarr services automatically, syncs Seerr's API key back into `.env` for the Homepage widget, and preconfigures Jellyfin connection details when Jellyfin is enabled.
+`docker compose up` preconfigures Seerr's Sonarr and Radarr services automatically, discovers Seerr's API key for the generated Homepage configuration, and preconfigures Jellyfin connection details when Jellyfin is enabled.
 
 Seerr uses the Jellyfin admin credentials by default. Set `SEERR_JELLYFIN_ADMIN_USERNAME` and `SEERR_JELLYFIN_ADMIN_PASSWORD` only if Seerr should authenticate with different Jellyfin credentials.
 
 The stack builds Seerr directly from the `develop` branch of [royal32/seerr](https://github.com/royal32/seerr).
 
-When Seerr has no users yet, the automation completes Seerr's initial Jellyfin connection, creates Seerr's Jellyfin API key, marks Seerr's initial setup complete, and syncs that key back into `JELLYFIN_API_KEY` for the Homepage widget. If `JELLYFIN_API_KEY` is already set, rerunning the connection automation stores that key in Seerr's media-server settings.
+When Seerr has no users yet, the automation completes Seerr's initial Jellyfin connection, creates Seerr's Jellyfin API key, and marks Seerr's initial setup complete. Generated API keys remain in application-owned state and are rediscovered during every reconciliation pass.
 
 If you want to run just the integration step again, use:
 
@@ -371,6 +366,18 @@ TSDProxy's built-in health monitoring probes Docker backends and re-resolves the
 The wake watchdog requires Docker socket access to restart TSDProxy. Treat it as a privileged infrastructure service.
 
 Container-to-container integrations must continue using Docker DNS names such as `http://sonarr:8989`; do not use Tailscale URLs for internal traffic. Run `python3 scripts/validate-access-config.py` to check for duplicate TSDProxy names, stale Traefik labels, and unsafe proxy port bindings.
+
+Run all local static validation and reconciler tests with:
+
+```shell
+./scripts/validate.sh
+```
+
+Inspect immediate and periodic reconciliation with:
+
+```shell
+docker compose logs stack-setup stack-reconciler
+```
 
 Enable new optional profiles in small batches. Each new HTTPS hostname requires a Tailscale/Let's Encrypt certificate, and requesting many first-time certificates together can temporarily hit issuance limits. Existing nodes and certificates are persisted under `CONFIG_ROOT/tsdproxy/data`.
 

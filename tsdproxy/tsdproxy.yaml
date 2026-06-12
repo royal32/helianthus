@@ -10,7 +10,7 @@ docker:
 tailscale:
   providers:
     default:
-      authKeyFile: /run/secrets/tsdproxy_authkey
+      authKeyFile: /run/tsdproxy-secrets/tsdproxy_authkey
       controlUrl: https://controlplane.tailscale.com
       maxCertConcurrency: 1
   dataDir: /data
