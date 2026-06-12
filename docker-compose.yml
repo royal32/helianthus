@@ -178,11 +178,7 @@ services:
       - tsdproxy.dash.label=Bazarr
       - autoheal=true
   seerr:
-    build:
-      context: ./seerr
-      args:
-        SEERR_REF: ${SEERR_REF:-v3.3.0}
-    image: docker-compose-nas/seerr:${SEERR_REF:-v3.3.0}-no-people-search
+   image: ghcr.io/royal32/seerr:develop
     init: true
     container_name: seerr
     environment:

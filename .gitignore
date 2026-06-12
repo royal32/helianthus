@@ -20,8 +20,6 @@ docker-compose.override.yml
 /pia-shared/*
 !/pia-shared/portupdate-qbittorrent.sh
 /seerr/*
-!/seerr/Dockerfile
-!/seerr/patch-search.mjs
 /cleanuparr
 /cross-seed
 /autobrr
