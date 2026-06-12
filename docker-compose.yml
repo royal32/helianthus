@@ -178,7 +178,7 @@ services:
       - tsdproxy.dash.label=Bazarr
       - autoheal=true
   seerr:
-   image: ghcr.io/royal32/seerr:develop
+    image: ghcr.io/royal32/seerr:develop
     init: true
     container_name: seerr
     environment:
