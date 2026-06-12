@@ -99,7 +99,9 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
+The Compose stack includes a `stack-setup` one-shot service. On `docker compose up`, it waits for the running services, runs `./scripts/update-config.sh`, then runs `./scripts/configure-app-connections.py`. These scripts are idempotent: they create/update the qBittorrent, qui, Sonarr, Radarr, Bazarr, Prowlarr, Profilarr, and Seerr configuration and wiring to match `.env`.
+
+Bazarr is enabled in the initial stack, connected to Sonarr and Radarr, and configured with Podnapisi plus an English-only language profile. The English profile is applied automatically to new series and movies and to existing items that do not already have a profile.
 
 The only values most users need to fill are:
 
@@ -131,7 +133,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `bazarr`, `homepage`, etc.)                                                                                                                  |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `homepage`, `profilarr`, etc.)                                                                                                               |                                                  |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.20.0`                                        |
 | `SEERR_REF`                    | Upstream Seerr release used to build the local no-people-search patch                                                                                                                                   | `v3.3.0`                                         |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
@@ -391,7 +393,7 @@ Optional services are not launched by default and enabled by appending their pro
 
 Say you want to enable FlareSolverr, you should have `COMPOSE_PROFILES=flaresolverr`.
 
-Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=flaresolverr,bazarr`.
+Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=flaresolverr,homepage`.
 
 ### FlareSolverr
 

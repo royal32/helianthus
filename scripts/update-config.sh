@@ -254,8 +254,82 @@ function update_qbittorrent_config {
 function update_bazarr_config {
     echo "Updating ${container} configuration..."
     local bazarr_config="${CONFIG_ROOT:-.}"/"$container"/config/config/config.yaml
+    local bazarr_database="${CONFIG_ROOT:-.}"/"$container"/config/db/bazarr.db
+    local english_profile_id
     until [ -f "$bazarr_config" ]; do sleep 1; done
+    until [ -f "$bazarr_database" ]; do sleep 1; done
+    docker compose stop "$container"
+
+    english_profile_id=$(python3 - "$bazarr_database" <<'PY'
+import json
+import sqlite3
+import sys
+
+database_path = sys.argv[1]
+profile_name = "English"
+profile_items = json.dumps([{
+    "id": 1,
+    "language": "en",
+    "audio_exclude": "False",
+    "audio_only_include": "False",
+    "hi": "False",
+    "forced": "False",
+}])
+
+with sqlite3.connect(database_path) as connection:
+    existing = connection.execute(
+        'SELECT "profileId" FROM table_languages_profiles WHERE name = ?',
+        (profile_name,),
+    ).fetchone()
+    if existing:
+        profile_id = existing[0]
+        connection.execute(
+            '''
+            UPDATE table_languages_profiles
+            SET cutoff = 65535, "originalFormat" = 0, items = ?,
+                "mustContain" = '[]', "mustNotContain" = '[]', tag = NULL
+            WHERE "profileId" = ?
+            ''',
+            (profile_items, profile_id),
+        )
+    else:
+        profile_id = connection.execute(
+            'SELECT COALESCE(MAX("profileId"), 0) + 1 FROM table_languages_profiles'
+        ).fetchone()[0]
+        connection.execute(
+            '''
+            INSERT INTO table_languages_profiles
+                ("profileId", cutoff, "originalFormat", items, name,
+                 "mustContain", "mustNotContain", tag)
+            VALUES (?, 65535, 0, ?, ?, '[]', '[]', NULL)
+            ''',
+            (profile_id, profile_items, profile_name),
+        )
+
+    connection.execute('UPDATE table_settings_languages SET enabled = 0')
+    connection.execute(
+        'UPDATE table_settings_languages SET enabled = 1 WHERE code2 = ?',
+        ("en",),
+    )
+    connection.execute(
+        'UPDATE table_shows SET "profileId" = ? WHERE "profileId" IS NULL',
+        (profile_id,),
+    )
+    connection.execute(
+        'UPDATE table_movies SET "profileId" = ? WHERE "profileId" IS NULL',
+        (profile_id,),
+    )
+
+print(profile_id)
+PY
+)
+
     sed -i.bak "s|base_url: '/$container'|base_url: ''|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|  enabled_providers: .*|  enabled_providers: [podnapisi]|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|  movie_default_enabled: false|  movie_default_enabled: true|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|  movie_default_profile: .*|  movie_default_profile: $english_profile_id|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|  serie_default_enabled: false|  serie_default_enabled: true|" "$bazarr_config" && rm "$bazarr_config".bak
+    sed -i.bak "s|  serie_default_profile: .*|  serie_default_profile: $english_profile_id|" "$bazarr_config" && rm "$bazarr_config".bak
     sed -i.bak "s/use_radarr: false/use_radarr: true/" "$bazarr_config" && rm "$bazarr_config".bak
     sed -i.bak "s/use_sonarr: false/use_sonarr: true/" "$bazarr_config" && rm "$bazarr_config".bak
     until [ -f "${CONFIG_ROOT:-.}"/sonarr/config.xml ]; do sleep 1; done
@@ -275,7 +349,7 @@ function update_bazarr_config {
     sed -i.bak 's/^BAZARR_API_KEY=.*/BAZARR_API_KEY='"$(sed -n 's/.*apikey: \(.*\)*/\1/p' "$bazarr_config" | head -n 1)"'/' .env && rm .env.bak
     clean_appledouble_files "${CONFIG_ROOT:-.}/$container"
     echo "Update of ${container} configuration complete, restarting..."
-    docker compose restart "$container"
+    docker compose start "$container"
 }
 
 function update_jellyfin_config {
