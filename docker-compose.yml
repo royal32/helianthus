@@ -512,6 +512,24 @@ services:
       - tsdproxy.port.1=${TSDPROXY_ACCESS_MODE:-443/https}:8096/http
       - tsdproxy.dash.label=Jellyfin
       - autoheal=true
+  media-audio-defaults:
+    build:
+      context: ./media-audio-defaults
+    image: docker-compose-nas/media-audio-defaults:latest
+    container_name: media-audio-defaults
+    user: ${USER_ID}:${GROUP_ID}
+    environment:
+      - TZ=${TIMEZONE}
+      - WATCH_ROOT=/data/media
+      - DEBOUNCE_SECONDS=${AUDIO_DEFAULTS_DEBOUNCE_SECONDS:-120}
+      - SCAN_INTERVAL_SECONDS=${AUDIO_DEFAULTS_SCAN_INTERVAL_SECONDS:-21600}
+      - STABILITY_CHECKS=${AUDIO_DEFAULTS_STABILITY_CHECKS:-2}
+      - STABILITY_INTERVAL_SECONDS=${AUDIO_DEFAULTS_STABILITY_INTERVAL_SECONDS:-10}
+    volumes:
+      - ${DATA_ROOT}/media:/data/media
+    restart: unless-stopped
+    labels:
+      - autoheal=true
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage

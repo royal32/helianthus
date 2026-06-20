@@ -153,6 +153,21 @@ class ReconcilerTests(unittest.TestCase):
         self.assertEqual(reconciler.custom_format_field_value_map(desired), {"value": 1, "exceptLanguage": False})
         self.assertTrue(reconciler.preferred_language_custom_format_matches(desired, desired))
 
+    def test_jellyfin_user_configuration_prefers_english_without_file_default(self) -> None:
+        desired = reconciler.desired_jellyfin_user_configuration(
+            {
+                "AudioLanguagePreference": "",
+                "PlayDefaultAudioTrack": True,
+                "RememberAudioSelections": True,
+                "SubtitleMode": "Default",
+            }
+        )
+
+        self.assertEqual(desired["AudioLanguagePreference"], "eng")
+        self.assertFalse(desired["PlayDefaultAudioTrack"])
+        self.assertFalse(desired["RememberAudioSelections"])
+        self.assertEqual(desired["SubtitleMode"], "Default")
+
     def test_public_quality_profile_falls_back_to_1080p_cutoff_without_4k(self) -> None:
         source = {
             "name": "Any",

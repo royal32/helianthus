@@ -43,6 +43,7 @@ DEFAULT_MAX_GB_PER_HOUR = 8.0
 PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME = "English Preferred"
 PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE = 100
 ENGLISH_LANGUAGE_VALUE = 1
+JELLYFIN_AUDIO_LANGUAGE_PREFERENCE = "eng"
 TORRENT_MARKER_FILENAME = "THIS_IS_NOT_THE_MEDIA_LIBRARY.txt"
 TORRENT_MARKER_TEXT = """This folder is qBittorrent's download area, not the Jellyfin media library.
 
@@ -1454,6 +1455,12 @@ class JellyfinApi(ContainerJsonClient):
         )
         self.request_json("POST", f"/Library/VirtualFolders?{query}", payload={}, expect_json=False)
 
+    def get_users(self) -> list[dict[str, Any]]:
+        return self.request_json("GET", "/Users") or []
+
+    def update_user_configuration(self, user_id: str, configuration: dict[str, Any]) -> None:
+        self.request_json("POST", f"/Users/{user_id}/Configuration", payload=configuration, expect_json=False)
+
 
 class SeerrApi(ContainerJsonClient):
     def __init__(self, api_key: str = "") -> None:
@@ -2042,6 +2049,40 @@ def ensure_jellyfin_libraries(api: JellyfinApi, env: dict[str, str], dry_run: bo
             log(f"Skipping Jellyfin {name} library creation after API error: {exc}")
 
 
+def desired_jellyfin_user_configuration(configuration: dict[str, Any]) -> dict[str, Any]:
+    desired = copy.deepcopy(configuration)
+    desired["AudioLanguagePreference"] = JELLYFIN_AUDIO_LANGUAGE_PREFERENCE
+    desired["PlayDefaultAudioTrack"] = False
+    desired["RememberAudioSelections"] = False
+    return desired
+
+
+def ensure_jellyfin_user_playback_preferences(api: JellyfinApi, env: dict[str, str], dry_run: bool) -> None:
+    token = ensure_jellyfin_admin_login(api, env, dry_run)
+    authenticated_api = JellyfinApi.authenticated(token)
+    changed_users: list[tuple[str, str, dict[str, Any]]] = []
+    for user in authenticated_api.get_users():
+        user_id = str(user.get("Id", ""))
+        if not user_id:
+            continue
+        current_configuration = user.get("Configuration") or {}
+        desired_configuration = desired_jellyfin_user_configuration(current_configuration)
+        if current_configuration != desired_configuration:
+            changed_users.append((user_id, str(user.get("Name", user_id)), desired_configuration))
+
+    if not changed_users:
+        log("Jellyfin user playback preferences already match the desired state")
+        return
+
+    if dry_run:
+        log(f"[dry-run] Would update Jellyfin playback preferences for {len(changed_users)} user(s)")
+        return
+
+    for user_id, user_name, configuration in changed_users:
+        authenticated_api.update_user_configuration(user_id, configuration)
+        log(f"Updated Jellyfin playback preferences for user {user_name}")
+
+
 def ensure_jellyfin_setup(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
     if "jellyfin" not in running_services:
         log("Skipping Jellyfin automation because the service is not running")
@@ -2068,6 +2109,11 @@ def ensure_jellyfin_setup(env: dict[str, str], running_services: set[str], dry_r
         ensure_jellyfin_libraries(api, env, dry_run)
     except RuntimeError as exc:
         log(f"Skipping Jellyfin library setup after API error: {exc}")
+
+    try:
+        ensure_jellyfin_user_playback_preferences(api, env, dry_run)
+    except RuntimeError as exc:
+        log(f"Skipping Jellyfin playback preference setup after API error: {exc}")
 
 
 def ensure_seerr_jellyfin_admin_setup(settings_path: Path, settings: dict[str, Any], env: dict[str, str], dry_run: bool) -> dict[str, Any]:

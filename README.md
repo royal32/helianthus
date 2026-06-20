@@ -171,6 +171,10 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `RADARR_QUALITY_PROFILE`       | Managed Radarr quality profile name; defaults to `ARR_PUBLIC_QUALITY_PROFILE`.                                                                                                                         | `Public 4K Preferred`                            |
 | `SONARR_MAX_GB_PER_HOUR`       | Optional Sonarr-specific size cap override.                                                                                                                                                             | `ARR_MAX_GB_PER_HOUR`                            |
 | `RADARR_MAX_GB_PER_HOUR`       | Optional Radarr-specific size cap override.                                                                                                                                                             | `ARR_MAX_GB_PER_HOUR`                            |
+| `AUDIO_DEFAULTS_DEBOUNCE_SECONDS` | Seconds the media audio-default watcher waits after a filesystem event before scanning                                                                                                               | `120`                                            |
+| `AUDIO_DEFAULTS_SCAN_INTERVAL_SECONDS` | Maximum seconds between full media audio-default scans                                                                                                                                           | `21600`                                          |
+| `AUDIO_DEFAULTS_STABILITY_CHECKS` | Number of unchanged filesize checks before an MKV is eligible for audio-default edits                                                                                                                | `2`                                              |
+| `AUDIO_DEFAULTS_STABILITY_INTERVAL_SECONDS` | Seconds between filesize stability checks                                                                                                                                                  | `10`                                             |
 | `RECONCILE_INTERVAL_SECONDS`   | Seconds between periodic configuration reconciliation passes                                                                                                                                           | `900`                                            |
 | `HOMEPAGE_VAR_TITLE`           | Title of the homepage                                                                                                                                                                                  | `Docker-Compose NAS`                             |
 | `HOMEPAGE_VAR_SEARCH_PROVIDER` | Homepage search provider, [see list here](https://gethomepage.dev/en/widgets/search/)                                                                                                                  | `google`                                         |
@@ -304,6 +308,8 @@ devices:
 
 Generally, running Docker on Linux you will want to use VA-API, but the exact mount paths may differ depending on your
 hardware.
+
+The reconciler configures every Jellyfin user to prefer English audio, not blindly play a file's default audio track, and not remember per-item audio selections. The `media-audio-defaults` sidecar also watches `/data/media` and uses `mkvpropedit` to set the default audio flag to the first non-commentary English track in MKV files when one exists. Foreign-language-only media is left unchanged and remains playable with Bazarr-managed English subtitles.
 
 ## Homepage
 
