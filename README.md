@@ -238,6 +238,7 @@ In Radarr, set the Root folder to `/data/media/movies`.
 
 `docker compose up` now configures qBittorrent automatically for Sonarr and Radarr by default through the `stack-setup` service.
 It creates the root folders, creates qBittorrent categories, points the download client at `vpn:8080`, and sets qBittorrent's internal save paths.
+It enables qBittorrent category paths in manual mode so Radarr and Sonarr downloads land in `/data/torrents/movies` and `/data/torrents/tv` instead of the shared torrent root.
 It also creates a `Public 4K Preferred` quality profile in both apps. That profile allows every non-CAM quality, prefers 2160p when available, falls back to 1080p, then accepts lower qualities when neither is available. The reconciler caps managed quality definitions at `ARR_MAX_GB_PER_HOUR` converted to the Arr API's MB/minute units.
 
 If you want to run just the integration step again, use:

@@ -2102,6 +2102,33 @@ def ensure_directory(service: str, path: str, dry_run: bool) -> None:
     exec_in_service(service, command, dry_run)
 
 
+def desired_qbittorrent_preference_updates(
+    preferences: dict[str, Any],
+    env: dict[str, str],
+    forwarded_port: int | None = None,
+) -> dict[str, Any]:
+    desired_preferences: dict[str, Any] = {}
+    if preferences.get("save_path") != env["QBITTORRENT_SAVE_PATH"]:
+        desired_preferences["save_path"] = env["QBITTORRENT_SAVE_PATH"]
+    if preferences.get("temp_path") != env["QBITTORRENT_TEMP_PATH"]:
+        desired_preferences["temp_path"] = env["QBITTORRENT_TEMP_PATH"]
+    if preferences.get("temp_path_enabled") is not True:
+        desired_preferences["temp_path_enabled"] = True
+    if preferences.get("use_category_paths_in_manual_mode") is not True:
+        desired_preferences["use_category_paths_in_manual_mode"] = True
+    if forwarded_port is not None and preferences.get("listen_port") != forwarded_port:
+        desired_preferences["listen_port"] = forwarded_port
+    return desired_preferences
+
+
+def managed_qbittorrent_category_paths(env: dict[str, str], running_services: set[str]) -> dict[str, str]:
+    return {
+        env[arr_service.category_env]: env[arr_service.download_path_env]
+        for arr_service in ARR_SERVICES
+        if arr_service.service_name in running_services
+    }
+
+
 def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
     if "qbittorrent" not in running_services:
         log("Skipping qBittorrent automation because the service is not running")
@@ -2122,19 +2149,14 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
     qbit.login()
     preferences = qbit.request_json("GET", "/api/v2/app/preferences")
 
-    desired_preferences: dict[str, Any] = {}
-    if preferences.get("save_path") != env["QBITTORRENT_SAVE_PATH"]:
-        desired_preferences["save_path"] = env["QBITTORRENT_SAVE_PATH"]
-    if preferences.get("temp_path") != env["QBITTORRENT_TEMP_PATH"]:
-        desired_preferences["temp_path"] = env["QBITTORRENT_TEMP_PATH"]
-    if preferences.get("temp_path_enabled") is not True:
-        desired_preferences["temp_path_enabled"] = True
-
     forwarded_port_path = get_config_root(env) / "pia-shared" / "port.dat"
+    forwarded_port: int | None = None
     if forwarded_port_path.exists():
         forwarded_port_text = forwarded_port_path.read_text().strip()
-        if forwarded_port_text.isdigit() and preferences.get("listen_port") != int(forwarded_port_text):
-            desired_preferences["listen_port"] = int(forwarded_port_text)
+        if forwarded_port_text.isdigit():
+            forwarded_port = int(forwarded_port_text)
+
+    desired_preferences = desired_qbittorrent_preference_updates(preferences, env, forwarded_port)
 
     if desired_preferences:
         qbit.request_json(
@@ -2148,12 +2170,8 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
         log("qBittorrent save-path preferences already match the desired state")
 
     categories = qbit.request_json("GET", "/api/v2/torrents/categories") or {}
-    for arr_service in ARR_SERVICES:
-        if arr_service.service_name not in running_services:
-            continue
-
-        category_name = env[arr_service.category_env]
-        save_path = env[arr_service.download_path_env]
+    managed_category_paths = managed_qbittorrent_category_paths(env, running_services)
+    for category_name, save_path in managed_category_paths.items():
         existing = categories.get(category_name)
 
         if existing is None:
@@ -2176,6 +2194,24 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
             log(f"Updated qBittorrent category {category_name}")
         else:
             log(f"qBittorrent category {category_name} already matches the desired state")
+
+    torrents = qbit.request_json("GET", "/api/v2/torrents/info?filter=all") or []
+    for category_name, save_path in managed_category_paths.items():
+        hashes = [
+            torrent["hash"]
+            for torrent in torrents
+            if torrent.get("category") == category_name
+            and str(torrent.get("save_path", "")).rstrip("/") != save_path.rstrip("/")
+        ]
+        if not hashes:
+            continue
+        qbit.request_json(
+            "POST",
+            "/api/v2/torrents/setLocation",
+            form_data={"hashes": "|".join(hashes), "location": save_path},
+            expect_json=False,
+        )
+        log(f"Moved {len(hashes)} qBittorrent torrent(s) in category {category_name} to {save_path}")
 
 
 def ensure_qui_qbittorrent_instance(

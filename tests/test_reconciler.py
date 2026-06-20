@@ -140,6 +140,37 @@ class ReconcilerTests(unittest.TestCase):
             153.6,
         )
 
+    def test_qbittorrent_preferences_enable_category_paths_in_manual_mode(self) -> None:
+        updates = reconciler.desired_qbittorrent_preference_updates(
+            {
+                "save_path": "/data/torrents",
+                "temp_path": "/data/torrents/incomplete",
+                "temp_path_enabled": True,
+                "use_category_paths_in_manual_mode": False,
+                "listen_port": 50000,
+            },
+            {
+                "QBITTORRENT_SAVE_PATH": "/data/torrents",
+                "QBITTORRENT_TEMP_PATH": "/data/torrents/incomplete",
+            },
+            50000,
+        )
+
+        self.assertEqual(updates, {"use_category_paths_in_manual_mode": True})
+
+    def test_managed_qbittorrent_category_paths_only_include_running_arrs(self) -> None:
+        paths = reconciler.managed_qbittorrent_category_paths(
+            {
+                "SONARR_QBIT_CATEGORY": "tv-sonarr",
+                "SONARR_DOWNLOAD_PATH": "/data/torrents/tv",
+                "RADARR_QBIT_CATEGORY": "radarr",
+                "RADARR_DOWNLOAD_PATH": "/data/torrents/movies",
+            },
+            {"radarr"},
+        )
+
+        self.assertEqual(paths, {"radarr": "/data/torrents/movies"})
+
     def test_missing_optional_credentials_stop_only_their_capabilities(self) -> None:
         running = {"sonarr", "radarr", "vpn", "qbittorrent", "tsdproxy"}
         with mock.patch.object(reconciler, "run_compose") as run_compose:
