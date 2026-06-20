@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shlex
 import sqlite3
@@ -39,6 +40,16 @@ GENERATED_API_KEY_NAMES = (
 )
 DEFAULT_PUBLIC_QUALITY_PROFILE_NAME = "Public 4K Preferred"
 DEFAULT_MAX_GB_PER_HOUR = 8.0
+TORRENT_MARKER_FILENAME = "THIS_IS_NOT_THE_MEDIA_LIBRARY.txt"
+TORRENT_MARKER_TEXT = """This folder is qBittorrent's download area, not the Jellyfin media library.
+
+Jellyfin libraries are:
+- Movies: /data/media/movies
+- Shows: /data/media/tv
+
+Radarr and Sonarr import completed downloads from /data/torrents into /data/media.
+Manual media drops should go into the appropriate /data/media folder, not here.
+"""
 
 
 @dataclass(frozen=True)
@@ -2102,6 +2113,23 @@ def ensure_directory(service: str, path: str, dry_run: bool) -> None:
     exec_in_service(service, command, dry_run)
 
 
+def ensure_qbittorrent_torrents_marker(env: dict[str, str], dry_run: bool) -> None:
+    marker_path = posixpath.join(env["QBITTORRENT_SAVE_PATH"].rstrip("/"), TORRENT_MARKER_FILENAME)
+    command = (
+        f"marker={shlex.quote(marker_path)}; "
+        f"content={shlex.quote(TORRENT_MARKER_TEXT)}; "
+        'tmp="$(mktemp)"; '
+        "printf '%s' \"$content\" > \"$tmp\"; "
+        'if [ ! -f "$marker" ] || ! cmp -s "$tmp" "$marker"; then '
+        'mv "$tmp" "$marker"; '
+        "else "
+        'rm "$tmp"; '
+        "fi; "
+        'chown abc:abc "$marker"'
+    )
+    exec_in_service("qbittorrent", command, dry_run)
+
+
 def desired_qbittorrent_preference_updates(
     preferences: dict[str, Any],
     env: dict[str, str],
@@ -2136,6 +2164,7 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
 
     ensure_directory("qbittorrent", env["QBITTORRENT_SAVE_PATH"], dry_run)
     ensure_directory("qbittorrent", env["QBITTORRENT_TEMP_PATH"], dry_run)
+    ensure_qbittorrent_torrents_marker(env, dry_run)
 
     for arr_service in ARR_SERVICES:
         if arr_service.service_name in running_services:

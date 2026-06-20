@@ -158,6 +158,18 @@ class ReconcilerTests(unittest.TestCase):
 
         self.assertEqual(updates, {"use_category_paths_in_manual_mode": True})
 
+    def test_qbittorrent_torrents_marker_is_placed_in_download_root(self) -> None:
+        with mock.patch.object(reconciler, "exec_in_service") as exec_in_service:
+            reconciler.ensure_qbittorrent_torrents_marker({"QBITTORRENT_SAVE_PATH": "/data/torrents"}, False)
+
+        exec_in_service.assert_called_once()
+        service, command, dry_run = exec_in_service.call_args.args
+        self.assertEqual(service, "qbittorrent")
+        self.assertFalse(dry_run)
+        self.assertIn("/data/torrents/THIS_IS_NOT_THE_MEDIA_LIBRARY.txt", command)
+        self.assertIn("Jellyfin media library", command)
+        self.assertIn("cmp -s", command)
+
     def test_managed_qbittorrent_category_paths_only_include_running_arrs(self) -> None:
         paths = reconciler.managed_qbittorrent_category_paths(
             {
