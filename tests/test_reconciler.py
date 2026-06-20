@@ -88,6 +88,58 @@ class ReconcilerTests(unittest.TestCase):
         self.assertIn('api_key = "sonarr-key"', config)
         self.assertIn('api_key = "radarr-key"', config)
 
+    def test_public_quality_profile_excludes_cam_and_prefers_4k_cutoff(self) -> None:
+        source = {
+            "name": "Any",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "minFormatScore": 100,
+            "cutoffFormatScore": 100,
+            "items": [
+                {"quality": {"id": 1, "name": "CAM", "resolution": 480}, "allowed": True},
+                {"quality": {"id": 2, "name": "Telesync", "resolution": 480}, "allowed": True},
+                {"quality": {"id": 3, "name": "WEBDL-1080p", "resolution": 1080}, "allowed": False},
+                {"quality": {"id": 4, "name": "WEBDL-2160p", "resolution": 2160}, "allowed": False},
+            ],
+            "formatItems": [{"format": {"id": 10, "name": "Example"}, "score": 250}],
+        }
+
+        desired = reconciler.build_public_quality_profile(source, "Public 4K Preferred")
+
+        self.assertEqual(desired["name"], "Public 4K Preferred")
+        self.assertTrue(desired["upgradeAllowed"])
+        self.assertEqual(desired["cutoff"], 4)
+        self.assertEqual(reconciler.quality_allowed_map(desired), {1: False, 2: False, 3: True, 4: True})
+        self.assertEqual(desired["minFormatScore"], 0)
+        self.assertEqual(desired["cutoffFormatScore"], 0)
+        self.assertEqual(desired["formatItems"][0]["score"], 0)
+
+    def test_public_quality_profile_falls_back_to_1080p_cutoff_without_4k(self) -> None:
+        source = {
+            "name": "Any",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "items": [
+                {"quality": {"id": 1, "name": "DVD", "resolution": 480}, "allowed": False},
+                {"quality": {"id": 2, "name": "HDTV-720p", "resolution": 720}, "allowed": False},
+                {"quality": {"id": 3, "name": "WEBDL-1080p", "resolution": 1080}, "allowed": False},
+            ],
+        }
+
+        desired = reconciler.build_public_quality_profile(source, "Public 4K Preferred")
+
+        self.assertEqual(desired["cutoff"], 3)
+        self.assertEqual(reconciler.quality_allowed_map(desired), {1: True, 2: True, 3: True})
+
+    def test_arr_quality_cap_converts_gb_per_hour_to_mb_per_minute(self) -> None:
+        self.assertEqual(
+            reconciler.arr_quality_max_mb_per_minute(
+                {"ARR_MAX_GB_PER_HOUR": "9", "SONARR_MAX_GB_PER_HOUR": ""},
+                reconciler.ARR_SERVICES[0],
+            ),
+            153.6,
+        )
+
     def test_missing_optional_credentials_stop_only_their_capabilities(self) -> None:
         running = {"sonarr", "radarr", "vpn", "qbittorrent", "tsdproxy"}
         with mock.patch.object(reconciler, "run_compose") as run_compose:

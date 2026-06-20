@@ -37,6 +37,8 @@ GENERATED_API_KEY_NAMES = (
     "SEERR_API_KEY",
     "AUTOBRR_API_KEY",
 )
+DEFAULT_PUBLIC_QUALITY_PROFILE_NAME = "Public 4K Preferred"
+DEFAULT_MAX_GB_PER_HOUR = 8.0
 
 
 @dataclass(frozen=True)
@@ -1108,6 +1110,18 @@ class ArrApi:
     def get_quality_profiles(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/qualityprofile") or []
 
+    def create_quality_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", f"{self.api_base}/qualityprofile", payload=payload) or {}
+
+    def update_quality_profile(self, item_id: int, payload: dict[str, Any]) -> None:
+        self._try_put(f"{self.api_base}/qualityprofile", item_id, payload)
+
+    def get_quality_definitions(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", f"{self.api_base}/qualitydefinition") or []
+
+    def update_quality_definition(self, item_id: int, payload: dict[str, Any]) -> None:
+        self._try_put(f"{self.api_base}/qualitydefinition", item_id, payload)
+
     def get_language_profiles(self) -> list[dict[str, Any]]:
         try:
             return self.client.request_json("GET", f"{self.api_base}/languageprofile") or []
@@ -1483,6 +1497,167 @@ def select_language_profile(profiles: list[dict[str, Any]], preferred_name: str)
             if profile.get("name", "").lower() == preferred_name.lower():
                 return profile
 
+    return profiles[0]
+
+
+def env_float(env: dict[str, str], key: str, default: float) -> float:
+    value = env.get(key)
+    if value is None or value == "":
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{key} must be a number") from exc
+    if parsed <= 0:
+        raise RuntimeError(f"{key} must be greater than zero")
+    return parsed
+
+
+def arr_quality_profile_name(env: dict[str, str], service: ArrService) -> str:
+    service_key = f"{service.service_name.upper()}_QUALITY_PROFILE"
+    return env.get(service_key, "") or env.get("ARR_PUBLIC_QUALITY_PROFILE", "") or DEFAULT_PUBLIC_QUALITY_PROFILE_NAME
+
+
+def arr_quality_max_mb_per_minute(env: dict[str, str], service: ArrService) -> float:
+    service_key = f"{service.service_name.upper()}_MAX_GB_PER_HOUR"
+    gb_per_hour = env_float(
+        env,
+        service_key,
+        env_float(env, "ARR_MAX_GB_PER_HOUR", DEFAULT_MAX_GB_PER_HOUR),
+    )
+    return round(gb_per_hour * 1024 / 60, 2)
+
+
+def quality_name_from_definition(definition: dict[str, Any]) -> str:
+    quality = definition.get("quality")
+    if isinstance(quality, dict):
+        return str(quality.get("name", ""))
+    return str(definition.get("title", "") or definition.get("name", ""))
+
+
+def profile_item_quality(item: dict[str, Any]) -> dict[str, Any] | None:
+    quality = item.get("quality")
+    return quality if isinstance(quality, dict) else None
+
+
+def quality_is_cam(name: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "", name.lower())
+    return "cam" in normalized or "telesync" in normalized
+
+
+def quality_resolution(quality: dict[str, Any], name: str) -> int:
+    resolution = quality.get("resolution")
+    if isinstance(resolution, int):
+        return resolution
+    if isinstance(resolution, str) and resolution.isdigit():
+        return int(resolution)
+    lower_name = name.lower()
+    if "2160" in lower_name or "4k" in lower_name or "uhd" in lower_name:
+        return 2160
+    if "1080" in lower_name:
+        return 1080
+    if "720" in lower_name:
+        return 720
+    if "480" in lower_name or "dvd" in lower_name:
+        return 480
+    return 0
+
+
+def set_public_profile_allowed_flags(items: list[dict[str, Any]]) -> None:
+    for item in items:
+        children = item.get("items")
+        if isinstance(children, list) and children:
+            set_public_profile_allowed_flags(children)
+            item["allowed"] = any(bool(child.get("allowed")) for child in children)
+            continue
+
+        quality = profile_item_quality(item)
+        if quality is None:
+            continue
+        item["allowed"] = not quality_is_cam(str(quality.get("name", "")))
+
+
+def flattened_profile_qualities(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    flattened: list[dict[str, Any]] = []
+    for item in items:
+        quality = profile_item_quality(item)
+        if quality is not None:
+            flattened.append({"quality": quality, "allowed": bool(item.get("allowed"))})
+        children = item.get("items")
+        if isinstance(children, list):
+            flattened.extend(flattened_profile_qualities(children))
+    return flattened
+
+
+def choose_public_profile_cutoff(items: list[dict[str, Any]]) -> int:
+    qualities = flattened_profile_qualities(items)
+    allowed = [item for item in qualities if item["allowed"]]
+    if not allowed:
+        raise RuntimeError("Quality profile has no non-CAM qualities to allow")
+
+    for minimum_resolution in (2160, 1080, 0):
+        candidates = [
+            item["quality"]
+            for item in allowed
+            if quality_resolution(item["quality"], str(item["quality"].get("name", ""))) >= minimum_resolution
+        ]
+        if candidates:
+            return int(candidates[-1]["id"])
+
+    return int(allowed[-1]["quality"]["id"])
+
+
+def quality_allowed_map(profile: dict[str, Any]) -> dict[int, bool]:
+    return {
+        int(item["quality"]["id"]): bool(item["allowed"])
+        for item in flattened_profile_qualities(profile.get("items", []))
+        if "id" in item["quality"]
+    }
+
+
+def format_score_map(profile: dict[str, Any]) -> dict[int, int]:
+    scores: dict[int, int] = {}
+    for item in profile.get("formatItems", []) or []:
+        fmt = item.get("format")
+        fmt_id = fmt.get("id") if isinstance(fmt, dict) else item.get("format")
+        if fmt_id is not None:
+            scores[int(fmt_id)] = int(item.get("score") or 0)
+    return scores
+
+
+def build_public_quality_profile(source: dict[str, Any], name: str) -> dict[str, Any]:
+    desired = copy.deepcopy(source)
+    desired["name"] = name
+    desired["upgradeAllowed"] = True
+    desired["items"] = desired.get("items", [])
+    set_public_profile_allowed_flags(desired["items"])
+    desired["cutoff"] = choose_public_profile_cutoff(desired["items"])
+
+    if "minFormatScore" in desired:
+        desired["minFormatScore"] = 0
+    if "cutoffFormatScore" in desired:
+        desired["cutoffFormatScore"] = 0
+    for item in desired.get("formatItems", []) or []:
+        item["score"] = 0
+
+    return desired
+
+
+def public_quality_profile_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    managed_keys = ("name", "upgradeAllowed", "cutoff", "minFormatScore", "cutoffFormatScore")
+    for key in managed_keys:
+        if key in desired and existing.get(key) != desired.get(key):
+            return False
+    return quality_allowed_map(existing) == quality_allowed_map(desired) and format_score_map(existing) == format_score_map(desired)
+
+
+def select_source_quality_profile(profiles: list[dict[str, Any]]) -> dict[str, Any]:
+    if not profiles:
+        raise RuntimeError("No quality profiles were returned by the Arr service")
+    for preferred_name in ("Any", "HD-1080p", "HD - 720p/1080p"):
+        for profile in profiles:
+            if profile.get("name", "").lower() == preferred_name.lower():
+                return profile
     return profiles[0]
 
 
@@ -2243,6 +2418,85 @@ def ensure_arr_download_client(arr_api: ArrApi, env: dict[str, str], dry_run: bo
     log(f"Created {arr_api.service.display_name} qBittorrent client")
 
 
+def ensure_arr_quality_size_limits(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
+    max_size = arr_quality_max_mb_per_minute(env, arr_api.service)
+    definitions = arr_api.get_quality_definitions()
+    changed_definitions: list[dict[str, Any]] = []
+
+    for definition in definitions:
+        name = quality_name_from_definition(definition)
+        if quality_is_cam(name):
+            continue
+
+        updated = copy.deepcopy(definition)
+        changed = False
+        current_max = float(updated.get("maxSize") or 0)
+        if current_max <= 0 or current_max > max_size:
+            updated["maxSize"] = max_size
+            changed = True
+
+        if "preferredSize" in updated:
+            current_preferred = float(updated.get("preferredSize") or max_size)
+            if current_preferred > max_size:
+                updated["preferredSize"] = max_size
+                changed = True
+
+        if "minSize" in updated:
+            current_min = float(updated.get("minSize") or 0)
+            if current_min > max_size:
+                updated["minSize"] = max_size
+                changed = True
+
+        if changed:
+            changed_definitions.append(updated)
+
+    if not changed_definitions:
+        log(f"{arr_api.service.display_name} quality size limits already fit within {max_size} MB/min")
+        return
+
+    if dry_run:
+        log(
+            f"[dry-run] Would cap {len(changed_definitions)} {arr_api.service.display_name} "
+            f"quality definition(s) at {max_size} MB/min"
+        )
+        return
+
+    for definition in changed_definitions:
+        arr_api.update_quality_definition(int(definition["id"]), definition)
+    log(
+        f"Capped {len(changed_definitions)} {arr_api.service.display_name} "
+        f"quality definition(s) at {max_size} MB/min"
+    )
+
+
+def ensure_arr_public_quality_profile(arr_api: ArrApi, env: dict[str, str], dry_run: bool) -> None:
+    profile_name = arr_quality_profile_name(env, arr_api.service)
+    profiles = arr_api.get_quality_profiles()
+    existing = next((profile for profile in profiles if profile.get("name", "").lower() == profile_name.lower()), None)
+    source = existing or select_source_quality_profile(profiles)
+    desired = build_public_quality_profile(source, profile_name)
+
+    if existing is not None:
+        desired["id"] = existing["id"]
+        if public_quality_profile_matches(existing, desired):
+            log(f"{arr_api.service.display_name} quality profile {profile_name} already matches the desired state")
+            return
+
+    if dry_run:
+        action = "update" if existing is not None else "create"
+        log(f"[dry-run] Would {action} {arr_api.service.display_name} quality profile {profile_name}")
+        return
+
+    if existing is not None:
+        arr_api.update_quality_profile(int(existing["id"]), desired)
+        log(f"Updated {arr_api.service.display_name} quality profile {profile_name}")
+        return
+
+    desired.pop("id", None)
+    arr_api.create_quality_profile(desired)
+    log(f"Created {arr_api.service.display_name} quality profile {profile_name}")
+
+
 def ensure_prowlarr_application(
     prowlarr_api: ProwlarrApi,
     arr_service: ArrService,
@@ -2603,6 +2857,8 @@ def ensure_arr_integrations(env: dict[str, str], running_services: set[str], dry
                 else f"{arr_service.display_name} authentication already matches the desired state"
             )
         ensure_arr_root_folder(arr_api, env, dry_run)
+        ensure_arr_quality_size_limits(arr_api, env, dry_run)
+        ensure_arr_public_quality_profile(arr_api, env, dry_run)
         ensure_arr_download_client(arr_api, env, dry_run)
 
 
