@@ -40,6 +40,9 @@ GENERATED_API_KEY_NAMES = (
 )
 DEFAULT_PUBLIC_QUALITY_PROFILE_NAME = "Public 4K Preferred"
 DEFAULT_MAX_GB_PER_HOUR = 8.0
+PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME = "English Preferred"
+PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE = 100
+ENGLISH_LANGUAGE_VALUE = 1
 TORRENT_MARKER_FILENAME = "THIS_IS_NOT_THE_MEDIA_LIBRARY.txt"
 TORRENT_MARKER_TEXT = """This folder is qBittorrent's download area, not the Jellyfin media library.
 
@@ -1127,6 +1130,18 @@ class ArrApi:
     def update_quality_profile(self, item_id: int, payload: dict[str, Any]) -> None:
         self._try_put(f"{self.api_base}/qualityprofile", item_id, payload)
 
+    def get_custom_formats(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", f"{self.api_base}/customformat") or []
+
+    def get_custom_format_schema(self) -> list[dict[str, Any]]:
+        return self.client.request_json("GET", f"{self.api_base}/customformat/schema") or []
+
+    def create_custom_format(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", f"{self.api_base}/customformat", payload=payload) or {}
+
+    def update_custom_format(self, item_id: int, payload: dict[str, Any]) -> None:
+        self._try_put(f"{self.api_base}/customformat", item_id, payload)
+
     def get_quality_definitions(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/qualitydefinition") or []
 
@@ -1636,7 +1651,19 @@ def format_score_map(profile: dict[str, Any]) -> dict[int, int]:
     return scores
 
 
-def build_public_quality_profile(source: dict[str, Any], name: str) -> dict[str, Any]:
+def custom_format_id(format_item: dict[str, Any]) -> int | None:
+    fmt = format_item.get("format")
+    fmt_id = fmt.get("id") if isinstance(fmt, dict) else fmt
+    if fmt_id is None:
+        return None
+    return int(fmt_id)
+
+
+def build_public_quality_profile(
+    source: dict[str, Any],
+    name: str,
+    preferred_language_format_id: int | None = None,
+) -> dict[str, Any]:
     desired = copy.deepcopy(source)
     desired["name"] = name
     desired["upgradeAllowed"] = True
@@ -1647,9 +1674,31 @@ def build_public_quality_profile(source: dict[str, Any], name: str) -> dict[str,
     if "minFormatScore" in desired:
         desired["minFormatScore"] = 0
     if "cutoffFormatScore" in desired:
-        desired["cutoffFormatScore"] = 0
+        desired["cutoffFormatScore"] = (
+            PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE if preferred_language_format_id is not None else 0
+        )
     for item in desired.get("formatItems", []) or []:
         item["score"] = 0
+    if preferred_language_format_id is not None:
+        format_items = desired.setdefault("formatItems", [])
+        existing = next(
+            (
+                item
+                for item in format_items
+                if custom_format_id(item) == preferred_language_format_id
+            ),
+            None,
+        )
+        if existing is None:
+            format_items.append(
+                {
+                    "format": preferred_language_format_id,
+                    "name": PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME,
+                    "score": PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE,
+                }
+            )
+        else:
+            existing["score"] = PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE
 
     return desired
 
@@ -1660,6 +1709,56 @@ def public_quality_profile_matches(existing: dict[str, Any], desired: dict[str, 
         if key in desired and existing.get(key) != desired.get(key):
             return False
     return quality_allowed_map(existing) == quality_allowed_map(desired) and format_score_map(existing) == format_score_map(desired)
+
+
+def build_preferred_language_custom_format(language_schema: dict[str, Any]) -> dict[str, Any]:
+    specification = copy.deepcopy(language_schema)
+    specification["name"] = "English"
+    specification["implementation"] = "LanguageSpecification"
+    specification["implementationName"] = specification.get("implementationName") or "Language"
+    specification["negate"] = False
+    specification["required"] = False
+    specification["presets"] = []
+    for field in specification.get("fields", []) or []:
+        if field.get("name") == "value":
+            field["value"] = ENGLISH_LANGUAGE_VALUE
+        elif field.get("name") == "exceptLanguage":
+            field["value"] = False
+
+    return {
+        "name": PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME,
+        "includeCustomFormatWhenRenaming": False,
+        "specifications": [specification],
+    }
+
+
+def custom_format_field_value_map(custom_format: dict[str, Any]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for specification in custom_format.get("specifications", []) or []:
+        if specification.get("implementation") != "LanguageSpecification":
+            continue
+        for field in specification.get("fields", []) or []:
+            name = field.get("name")
+            if name:
+                values[str(name)] = field.get("value")
+    return values
+
+
+def preferred_language_custom_format_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    if existing.get("name") != desired.get("name"):
+        return False
+    existing_specs = existing.get("specifications", []) or []
+    desired_specs = desired.get("specifications", []) or []
+    if len(existing_specs) != 1 or len(desired_specs) != 1:
+        return False
+    existing_spec = existing_specs[0]
+    desired_spec = desired_specs[0]
+    return (
+        existing_spec.get("implementation") == desired_spec.get("implementation")
+        and bool(existing_spec.get("negate")) == bool(desired_spec.get("negate"))
+        and bool(existing_spec.get("required")) == bool(desired_spec.get("required"))
+        and custom_format_field_value_map(existing) == custom_format_field_value_map(desired)
+    )
 
 
 def select_source_quality_profile(profiles: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2539,7 +2638,8 @@ def ensure_arr_public_quality_profile(arr_api: ArrApi, env: dict[str, str], dry_
     profiles = arr_api.get_quality_profiles()
     existing = next((profile for profile in profiles if profile.get("name", "").lower() == profile_name.lower()), None)
     source = existing or select_source_quality_profile(profiles)
-    desired = build_public_quality_profile(source, profile_name)
+    preferred_language_format_id = ensure_arr_preferred_language_custom_format(arr_api, dry_run)
+    desired = build_public_quality_profile(source, profile_name, preferred_language_format_id)
 
     if existing is not None:
         desired["id"] = existing["id"]
@@ -2560,6 +2660,55 @@ def ensure_arr_public_quality_profile(arr_api: ArrApi, env: dict[str, str], dry_
     desired.pop("id", None)
     arr_api.create_quality_profile(desired)
     log(f"Created {arr_api.service.display_name} quality profile {profile_name}")
+
+
+def ensure_arr_preferred_language_custom_format(arr_api: ArrApi, dry_run: bool) -> int | None:
+    custom_formats = arr_api.get_custom_formats()
+    existing = next(
+        (
+            custom_format
+            for custom_format in custom_formats
+            if custom_format.get("name", "").lower() == PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME.lower()
+        ),
+        None,
+    )
+    language_schema = schema_by_implementation(arr_api.get_custom_format_schema(), "LanguageSpecification")
+    desired = build_preferred_language_custom_format(language_schema)
+
+    if existing is not None:
+        desired["id"] = existing["id"]
+        if preferred_language_custom_format_matches(existing, desired):
+            log(f"{arr_api.service.display_name} custom format {PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME} already matches the desired state")
+            return int(existing["id"])
+
+    if dry_run:
+        action = "update" if existing is not None else "create"
+        log(f"[dry-run] Would {action} {arr_api.service.display_name} custom format {PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME}")
+        return int(existing["id"]) if existing is not None and existing.get("id") is not None else None
+
+    if existing is not None:
+        arr_api.update_custom_format(int(existing["id"]), desired)
+        log(f"Updated {arr_api.service.display_name} custom format {PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME}")
+        return int(existing["id"])
+
+    desired.pop("id", None)
+    created = arr_api.create_custom_format(desired)
+    if not created.get("id"):
+        refreshed = next(
+            (
+                custom_format
+                for custom_format in arr_api.get_custom_formats()
+                if custom_format.get("name", "").lower() == PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME.lower()
+            ),
+            None,
+        )
+        if refreshed is None or not refreshed.get("id"):
+            raise RuntimeError(
+                f"{arr_api.service.display_name} custom format {PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME} was not found after creation"
+            )
+        created = refreshed
+    log(f"Created {arr_api.service.display_name} custom format {PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME}")
+    return int(created["id"])
 
 
 def ensure_prowlarr_application(

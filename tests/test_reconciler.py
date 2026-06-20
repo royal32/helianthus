@@ -114,6 +114,45 @@ class ReconcilerTests(unittest.TestCase):
         self.assertEqual(desired["cutoffFormatScore"], 0)
         self.assertEqual(desired["formatItems"][0]["score"], 0)
 
+    def test_public_quality_profile_prefers_english_without_requiring_it(self) -> None:
+        source = {
+            "name": "Any",
+            "upgradeAllowed": False,
+            "cutoff": 1,
+            "minFormatScore": 50,
+            "cutoffFormatScore": 500,
+            "items": [
+                {"quality": {"id": 3, "name": "WEBDL-1080p", "resolution": 1080}, "allowed": True},
+                {"quality": {"id": 4, "name": "WEBDL-2160p", "resolution": 2160}, "allowed": True},
+            ],
+            "formatItems": [{"format": {"id": 10, "name": "Example"}, "score": 250}],
+        }
+
+        desired = reconciler.build_public_quality_profile(source, "Public 4K Preferred", 11)
+
+        self.assertEqual(desired["minFormatScore"], 0)
+        self.assertEqual(desired["cutoffFormatScore"], reconciler.PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE)
+        self.assertEqual(reconciler.format_score_map(desired), {10: 0, 11: reconciler.PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE})
+
+    def test_preferred_language_custom_format_matches_english_language(self) -> None:
+        schema = {
+            "implementation": "LanguageSpecification",
+            "implementationName": "Language",
+            "negate": True,
+            "required": True,
+            "fields": [
+                {"name": "value", "value": 0},
+                {"name": "exceptLanguage", "value": True},
+            ],
+            "presets": [{"name": "Unused"}],
+        }
+
+        desired = reconciler.build_preferred_language_custom_format(schema)
+
+        self.assertEqual(desired["name"], "English Preferred")
+        self.assertEqual(reconciler.custom_format_field_value_map(desired), {"value": 1, "exceptLanguage": False})
+        self.assertTrue(reconciler.preferred_language_custom_format_matches(desired, desired))
+
     def test_public_quality_profile_falls_back_to_1080p_cutoff_without_4k(self) -> None:
         source = {
             "name": "Any",
