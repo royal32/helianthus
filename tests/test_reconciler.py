@@ -159,14 +159,18 @@ class ReconcilerTests(unittest.TestCase):
                 "AudioLanguagePreference": "",
                 "PlayDefaultAudioTrack": True,
                 "RememberAudioSelections": True,
+                "SubtitleLanguagePreference": "",
                 "SubtitleMode": "Default",
+                "RememberSubtitleSelections": True,
             }
         )
 
         self.assertEqual(desired["AudioLanguagePreference"], "eng")
         self.assertFalse(desired["PlayDefaultAudioTrack"])
         self.assertFalse(desired["RememberAudioSelections"])
-        self.assertEqual(desired["SubtitleMode"], "Default")
+        self.assertEqual(desired["SubtitleLanguagePreference"], "eng")
+        self.assertEqual(desired["SubtitleMode"], "Smart")
+        self.assertFalse(desired["RememberSubtitleSelections"])
 
     def test_public_quality_profile_falls_back_to_1080p_cutoff_without_4k(self) -> None:
         source = {

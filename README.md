@@ -309,7 +309,7 @@ devices:
 Generally, running Docker on Linux you will want to use VA-API, but the exact mount paths may differ depending on your
 hardware.
 
-The reconciler configures every Jellyfin user to prefer English audio, not blindly play a file's default audio track, and not remember per-item audio selections. The `media-audio-defaults` sidecar also watches `/data/media` and uses `mkvpropedit` to set the default audio flag to the first non-commentary English track in MKV files when one exists. Foreign-language-only media is left unchanged and remains playable with Bazarr-managed English subtitles.
+The reconciler configures every Jellyfin user to prefer English audio and English subtitles, use smart subtitle selection, not blindly play a file's default audio track, and not remember per-item audio or subtitle selections. The `media-audio-defaults` sidecar also watches `/data/media` and uses `mkvpropedit` to normalize MKV defaults. It sets the first non-commentary English audio track as default when one exists, clears non-English subtitle defaults for English-audio media, and defaults the best English subtitle for foreign-audio media. Foreign-language-only media remains playable with Bazarr-managed English subtitles.
 
 ## Homepage
 

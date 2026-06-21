@@ -2054,6 +2054,9 @@ def desired_jellyfin_user_configuration(configuration: dict[str, Any]) -> dict[s
     desired["AudioLanguagePreference"] = JELLYFIN_AUDIO_LANGUAGE_PREFERENCE
     desired["PlayDefaultAudioTrack"] = False
     desired["RememberAudioSelections"] = False
+    desired["SubtitleLanguagePreference"] = JELLYFIN_AUDIO_LANGUAGE_PREFERENCE
+    desired["SubtitleMode"] = "Smart"
+    desired["RememberSubtitleSelections"] = False
     return desired
 
 

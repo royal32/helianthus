@@ -44,20 +44,49 @@ normalize_mkv() {
         (($track.properties.language_ietf // $track.properties.language // "") | ascii_downcase);
       def is_english($track):
         (normalized_language($track) | startswith("en")) or (($track.properties.language // "" | ascii_downcase) == "eng");
+      def track_name($track):
+        ($track.properties.track_name // "" | ascii_downcase);
       def is_commentary($track):
-        (($track.properties.track_name // "" | ascii_downcase) | test("commentary|comment|descriptive|description"));
+        (track_name($track) | test("commentary|comment|descriptive|description"));
+      def is_hearing_impaired($track):
+        (($track.properties.flag_hearing_impaired // false) == true) or (track_name($track) | test("\\b(sdh|hi|hearing impaired)\\b"));
+      def is_forced($track):
+        (($track.properties.forced_track // false) == true) or (track_name($track) | test("\\bforced\\b"));
 
       [.tracks[] | select(.type == "audio")] as $audio
+      | [.tracks[] | select(.type == "subtitles")] as $subtitles
       | ($audio | to_entries | map(select(is_english(.value) and (is_commentary(.value) | not))) | first)
         // ($audio | to_entries | map(select(is_english(.value))) | first) as $chosen
       | if $chosen == null then
-          {english: false}
+          (
+            ($subtitles | to_entries | map(select(is_english(.value) and (is_forced(.value) | not) and (is_hearing_impaired(.value) | not))) | first)
+            // ($subtitles | to_entries | map(select(is_english(.value) and (is_hearing_impaired(.value) | not))) | first)
+            // ($subtitles | to_entries | map(select(is_english(.value))) | first)
+          ) as $subtitle
+          | {
+              english: false,
+              audio_count: ($audio | length),
+              defaults: ($audio | to_entries | map(select(.value.properties.default_track == true) | .key + 1)),
+              subtitle_count: ($subtitles | length),
+              subtitle: (if $subtitle == null then null else ($subtitle.key + 1) end),
+              subtitle_defaults: ($subtitles | to_entries | map(select(.value.properties.default_track == true) | .key + 1)),
+              non_english_forced_subtitles: ($subtitles | to_entries | map(select((is_english(.value) | not) and is_forced(.value)) | .key + 1))
+            }
         else
+          (
+            ($subtitles | to_entries | map(select(is_english(.value) and is_forced(.value) and (is_hearing_impaired(.value) | not))) | first)
+            // ($subtitles | to_entries | map(select(is_english(.value) and is_forced(.value))) | first)
+          ) as $subtitle
+          |
           {
             english: true,
             chosen: ($chosen.key + 1),
             audio_count: ($audio | length),
-            defaults: ($audio | to_entries | map(select(.value.properties.default_track == true) | .key + 1))
+            defaults: ($audio | to_entries | map(select(.value.properties.default_track == true) | .key + 1)),
+            subtitle_count: ($subtitles | length),
+            subtitle: (if $subtitle == null then null else ($subtitle.key + 1) end),
+            subtitle_defaults: ($subtitles | to_entries | map(select(.value.properties.default_track == true) | .key + 1)),
+            non_english_forced_subtitles: ($subtitles | to_entries | map(select((is_english(.value) | not) and is_forced(.value)) | .key + 1))
           }
         end
     '
@@ -66,27 +95,52 @@ normalize_mkv() {
     return 0
   fi
 
-  if [ "$(jq -r '.english' <<<"$decision")" != "true" ]; then
-    return 0
-  fi
-
   local chosen audio_count defaults
+  local command=(mkvpropedit "$file")
+  local changed=0
   chosen="$(jq -r '.chosen' <<<"$decision")"
   audio_count="$(jq -r '.audio_count' <<<"$decision")"
   defaults="$(jq -r '.defaults | join(",")' <<<"$decision")"
 
-  if [ "$defaults" = "$chosen" ]; then
+  if [ "$(jq -r '.english' <<<"$decision")" = "true" ] && [ "$defaults" != "$chosen" ]; then
+    local index
+    for index in $(seq 1 "$audio_count"); do
+      command+=(--edit "track:a${index}" --set "flag-default=0")
+    done
+    command+=(--edit "track:a${chosen}" --set "flag-default=1")
+    changed=1
+  fi
+
+  local subtitle subtitle_count subtitle_defaults non_english_forced_subtitles
+  subtitle="$(jq -r '.subtitle // ""' <<<"$decision")"
+  subtitle_count="$(jq -r '.subtitle_count' <<<"$decision")"
+  subtitle_defaults="$(jq -r '.subtitle_defaults | join(",")' <<<"$decision")"
+  non_english_forced_subtitles="$(jq -r '.non_english_forced_subtitles | join(" ")' <<<"$decision")"
+
+  if [ "$subtitle_defaults" != "$subtitle" ]; then
+    local subtitle_index
+    for subtitle_index in $(seq 1 "$subtitle_count"); do
+      command+=(--edit "track:s${subtitle_index}" --set "flag-default=0")
+    done
+    if [ -n "$subtitle" ]; then
+      command+=(--edit "track:s${subtitle}" --set "flag-default=1")
+    fi
+    changed=1
+  fi
+
+  if [ -n "$non_english_forced_subtitles" ]; then
+    local forced_subtitle
+    for forced_subtitle in $non_english_forced_subtitles; do
+      command+=(--edit "track:s${forced_subtitle}" --set "flag-forced=0")
+    done
+    changed=1
+  fi
+
+  if [ "$changed" -eq 0 ]; then
     return 0
   fi
 
-  local command=(mkvpropedit "$file")
-  local index
-  for index in $(seq 1 "$audio_count"); do
-    command+=(--edit "track:a${index}" --set "flag-default=0")
-  done
-  command+=(--edit "track:a${chosen}" --set "flag-default=1")
-
-  log "Setting English audio track a${chosen} as default: $file"
+  log "Normalizing audio/subtitle defaults: $file"
   "${command[@]}"
 }
 
