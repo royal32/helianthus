@@ -516,6 +516,7 @@ services:
     build:
       context: ./media-audio-defaults
     image: docker-compose-nas/media-audio-defaults:latest
+    pull_policy: never
     container_name: media-audio-defaults
     user: ${USER_ID}:${GROUP_ID}
     environment:
