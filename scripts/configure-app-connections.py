@@ -1466,6 +1466,14 @@ class JellyfinApi(ContainerJsonClient):
         )
         self.request_json("POST", f"/Library/VirtualFolders?{query}", payload={}, expect_json=False)
 
+    def update_library_options(self, item_id: str, library_options: dict[str, Any]) -> None:
+        self.request_json(
+            "POST",
+            "/Library/VirtualFolders/LibraryOptions",
+            payload={"Id": item_id, "LibraryOptions": library_options},
+            expect_json=False,
+        )
+
     def get_users(self) -> list[dict[str, Any]]:
         return self.request_json("GET", "/Users") or []
 
@@ -2058,6 +2066,54 @@ def ensure_jellyfin_libraries(api: JellyfinApi, env: dict[str, str], dry_run: bo
             log(f"Created Jellyfin {name} library at {path}")
         except RuntimeError as exc:
             log(f"Skipping Jellyfin {name} library creation after API error: {exc}")
+
+    ensure_jellyfin_realtime_monitoring(authenticated_api, env, dry_run)
+
+
+def enable_jellyfin_realtime_monitoring(folder: dict[str, Any]) -> dict[str, Any] | None:
+    library_options = copy.deepcopy(folder.get("LibraryOptions") or {})
+    if library_options.get("EnableRealtimeMonitor") is True:
+        return None
+    library_options["EnableRealtimeMonitor"] = True
+    return library_options
+
+
+def ensure_jellyfin_realtime_monitoring(api: JellyfinApi, env: dict[str, str], dry_run: bool) -> None:
+    managed_libraries = {
+        "Movies": env["RADARR_ROOT_FOLDER"],
+        "Shows": env["SONARR_ROOT_FOLDER"],
+    }
+    existing_folders = api.get_virtual_folders()
+
+    for name, path in managed_libraries.items():
+        folder = next(
+            (
+                item
+                for item in existing_folders
+                if item.get("Name") == name
+                or path in item.get("Locations", [])
+                or path in item.get("Paths", [])
+            ),
+            None,
+        )
+        if folder is None:
+            continue
+
+        library_options = enable_jellyfin_realtime_monitoring(folder)
+        if library_options is None:
+            log(f"Jellyfin realtime monitoring already enabled for {name}")
+            continue
+
+        if dry_run:
+            log(f"[dry-run] Would enable Jellyfin realtime monitoring for {name}")
+            continue
+
+        item_id = folder.get("ItemId") or folder.get("Id")
+        if not item_id:
+            log(f"Skipping Jellyfin realtime monitoring for {name} because the library id is missing")
+            continue
+        api.update_library_options(str(item_id), library_options)
+        log(f"Enabled Jellyfin realtime monitoring for {name}")
 
 
 def desired_jellyfin_user_configuration(configuration: dict[str, Any]) -> dict[str, Any]:

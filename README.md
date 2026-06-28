@@ -299,6 +299,8 @@ To use the VueTorrent WebUI just go to `qBittorrent`, `Options`, `Web UI`, `Use 
 
 ## Jellyfin
 
+The reconciler creates the Movies and Shows libraries and enables Jellyfin realtime monitoring on both by default.
+
 To enable [hardware transcoding](https://jellyfin.org/docs/general/administration/hardware-acceleration/),
 depending on your system, you may need to add the following block:
 

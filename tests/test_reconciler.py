@@ -172,6 +172,19 @@ class ReconcilerTests(unittest.TestCase):
         self.assertEqual(desired["SubtitleMode"], "Smart")
         self.assertFalse(desired["RememberSubtitleSelections"])
 
+    def test_jellyfin_realtime_monitoring_helper_is_idempotent(self) -> None:
+        self.assertIsNone(
+            reconciler.enable_jellyfin_realtime_monitoring(
+                {"LibraryOptions": {"EnableRealtimeMonitor": True, "Enabled": True}}
+            )
+        )
+
+        updated = reconciler.enable_jellyfin_realtime_monitoring(
+            {"LibraryOptions": {"EnableRealtimeMonitor": False, "Enabled": True}}
+        )
+
+        self.assertEqual(updated, {"EnableRealtimeMonitor": True, "Enabled": True})
+
     def test_public_quality_profile_falls_back_to_1080p_cutoff_without_4k(self) -> None:
         source = {
             "name": "Any",
