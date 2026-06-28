@@ -1,0 +1,8 @@
+services:
+  seerr:
+    ports:
+      - "${LOCAL_NETWORK_BIND_ADDRESS:-0.0.0.0}:${SEERR_LOCAL_NETWORK_PORT:-5055}:5055/tcp"
+
+  jellyfin:
+    ports:
+      - "${LOCAL_NETWORK_BIND_ADDRESS:-0.0.0.0}:${JELLYFIN_LOCAL_NETWORK_PORT:-8096}:8096/tcp"

@@ -44,6 +44,18 @@ def compose_config() -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def env_bool(env: dict[str, str], key: str, default: bool) -> bool | None:
+    value = env.get(key, "")
+    if not value:
+        return default
+    normalized = value.lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 def main() -> int:
     env = {**load_env(), **os.environ}
     config = compose_config()
@@ -52,6 +64,18 @@ def main() -> int:
     warnings: list[str] = []
     proxy_names: dict[str, str] = {}
     disable_tls = env.get("TSDPROXY_DISABLE_TLS", "false").lower()
+    local_network_http_access = env_bool(env, "LOCAL_NETWORK_HTTP_ACCESS", True)
+    allowed_published_ports = set(ALLOWED_PUBLISHED_PORTS)
+    local_network_ports = {
+        ("jellyfin", env.get("JELLYFIN_LOCAL_NETWORK_PORT", "8096"), "tcp"),
+        ("seerr", env.get("SEERR_LOCAL_NETWORK_PORT", "5055"), "tcp"),
+    }
+    seen_published_ports: set[tuple[str, str, str]] = set()
+
+    if local_network_http_access is None:
+        errors.append("LOCAL_NETWORK_HTTP_ACCESS must be true or false")
+    elif local_network_http_access:
+        allowed_published_ports.update(local_network_ports)
 
     if disable_tls in {"1", "true", "yes", "on"}:
         expected_access_mode = "80/http"
@@ -107,11 +131,21 @@ def main() -> int:
                 if host_ip not in {"127.0.0.1", "::1"}:
                     errors.append("TSDProxy dashboard must only bind to localhost")
                 continue
-            if (service_name, published, protocol) not in ALLOWED_PUBLISHED_PORTS:
+            published_port = (service_name, published, protocol)
+            seen_published_ports.add(published_port)
+            if published_port not in allowed_published_ports:
                 errors.append(
                     f"{service_name} publishes unexpected host port {published}/{protocol}; "
-                    "web applications must use TSDProxy"
+                    "web applications must use TSDProxy or LOCAL_NETWORK_HTTP_ACCESS"
                 )
+
+    if local_network_http_access:
+        missing_ports = sorted(local_network_ports - seen_published_ports)
+        for service_name, published, protocol in missing_ports:
+            errors.append(
+                f"{service_name} is missing local-network host port {published}/{protocol}; "
+                "run setup-stack.sh after changing LOCAL_NETWORK_HTTP_ACCESS"
+            )
 
     tailnet_domain = env.get("TAILNET_DOMAIN", "")
     if not tailnet_domain:

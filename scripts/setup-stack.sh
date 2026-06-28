@@ -215,6 +215,60 @@ sync_tsdproxy_access_mode() {
   esac
 }
 
+sync_local_network_access_compose_file() {
+  local enabled
+  local compose_file
+  local normalized_compose_file
+
+  enabled=$(get_env_value "$ENV_FILE" "LOCAL_NETWORK_HTTP_ACCESS" || printf 'true')
+  enabled=$(printf '%s' "$enabled" | tr '[:upper:]' '[:lower:]')
+  compose_file=$(get_env_value "$ENV_FILE" "COMPOSE_FILE" || printf 'docker-compose.yml:privoxy/docker-compose.yml')
+
+  normalized_compose_file=$(printf '%s' "$compose_file" | tr ':' '\n' | awk 'NF && $0 != "local-network-access/docker-compose.yml" && !seen[$0]++' | paste -sd: -)
+  case "$enabled" in
+    1|true|yes|on)
+      normalized_compose_file=$(printf '%s\n' "$normalized_compose_file" | awk '
+        BEGIN { FS = ":"; OFS = ":" }
+        {
+          output = ""
+          inserted = 0
+          for (i = 1; i <= NF; i++) {
+            if ($i == "") {
+              continue
+            }
+            if (output != "") {
+              output = output ":"
+            }
+            output = output $i
+            if ($i == "docker-compose.yml") {
+              output = output ":local-network-access/docker-compose.yml"
+              inserted = 1
+            }
+          }
+          if (!inserted) {
+            if (output != "") {
+              output = "docker-compose.yml:local-network-access/docker-compose.yml:" output
+            } else {
+              output = "docker-compose.yml:local-network-access/docker-compose.yml"
+            }
+          }
+          print output
+        }
+      ')
+      ;;
+    0|false|no|off|"")
+      ;;
+    *)
+      die "LOCAL_NETWORK_HTTP_ACCESS must be true or false"
+      ;;
+  esac
+
+  if [[ -z "$normalized_compose_file" ]]; then
+    normalized_compose_file="docker-compose.yml"
+  fi
+  set_if_changed "$ENV_FILE" "COMPOSE_FILE" "$normalized_compose_file"
+}
+
 prepare_homepage_config() {
   local config_root
   local homepage_config
@@ -297,6 +351,10 @@ ensure_root_env() {
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_CHECK_INTERVAL" "" "30"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_THRESHOLD_SECONDS" "" "120"
   set_if_missing_or_default "$ENV_FILE" "TSDPROXY_WAKE_GRACE_SECONDS" "" "15"
+  set_if_missing_or_default "$ENV_FILE" "LOCAL_NETWORK_HTTP_ACCESS" "" "true"
+  set_if_missing_or_default "$ENV_FILE" "LOCAL_NETWORK_BIND_ADDRESS" "" "0.0.0.0"
+  set_if_missing_or_default "$ENV_FILE" "JELLYFIN_LOCAL_NETWORK_PORT" "" "8096"
+  set_if_missing_or_default "$ENV_FILE" "SEERR_LOCAL_NETWORK_PORT" "" "5055"
 
   data_root=$(get_env_value "$ENV_FILE" "DATA_ROOT" || true)
   if [[ -n "$data_root" ]]; then
@@ -398,6 +456,7 @@ clean_appledouble_files() {
 }
 
 validate_compose() {
+  sync_local_network_access_compose_file
   (cd "$ROOT_DIR" && docker compose config --quiet)
   (cd "$ROOT_DIR" && python3 ./scripts/validate-access-config.py)
   log "Compose configuration is valid"

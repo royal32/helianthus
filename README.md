@@ -136,6 +136,10 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
 | `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `homepage`, `profilarr`, etc.)                                                                                                               |                                                  |
+| `LOCAL_NETWORK_HTTP_ACCESS`    | Whether setup should include direct LAN HTTP bindings for Jellyfin and Seerr in `COMPOSE_FILE`. Run `setup-stack.sh` after changing it.                                                                | `true`                                           |
+| `LOCAL_NETWORK_BIND_ADDRESS`   | Host address used for direct LAN HTTP bindings. Use `0.0.0.0` for all interfaces.                                                                                                                       | `0.0.0.0`                                        |
+| `JELLYFIN_LOCAL_NETWORK_PORT`  | Host port for direct LAN access to Jellyfin.                                                                                                                                                           | `8096`                                           |
+| `SEERR_LOCAL_NETWORK_PORT`     | Host port for direct LAN access to Seerr.                                                                                                                                                              | `5055`                                           |
 | `QUI_REF`                      | Upstream qui release used to build the local visible-external-IP patch                                                                                                                                 | `v1.20.0`                                        |
 | `TIMEZONE`                     | TimeZone used by the container.                                                                                                                                                                        | `America/New_York`                               |
 | `TAILNET_DOMAIN`               | Tailscale DNS suffix used to build canonical application URLs, for example `example-tailnet.ts.net`.                                                                                                   |                                                  |
@@ -358,7 +362,16 @@ The values used are:
 
 ## Tailscale Access
 
-TSDProxy is the only HTTP access layer. It discovers containers with `tsdproxy.enable=true`, creates one private Tailscale node per service, and proxies directly to the service over the shared Docker network. By default it terminates Tailscale HTTPS. Traefik, mDNS aliases, subpath routing, and public DNS certificates are not used.
+TSDProxy is the private tailnet HTTP access layer. It discovers containers with `tsdproxy.enable=true`, creates one private Tailscale node per service, and proxies directly to the service over the shared Docker network. By default it terminates Tailscale HTTPS. Traefik, mDNS aliases, subpath routing, and public DNS certificates are not used.
+
+Jellyfin and Seerr are also exposed directly on the local network by default:
+
+```text
+http://<nas-lan-ip>:8096
+http://<nas-lan-ip>:5055
+```
+
+Set `LOCAL_NETWORK_HTTP_ACCESS=false` and rerun `./scripts/setup-stack.sh` to remove those direct HTTP bindings from `COMPOSE_FILE`.
 
 Create a reusable Tailscale auth key and place it in the ignored secret file:
 
