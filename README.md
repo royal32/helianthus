@@ -275,6 +275,8 @@ Their API keys can be found in Settings > Security > API Key.
 The reconciler sets qBittorrent's username to `QBITTORRENT_USERNAME` or `ADMIN_USERNAME`, and its password to `QBITTORRENT_PASSWORD` or `GLOBAL_PASSWORD`. If you wish to update the password manually,
 since qBittorrent v4.6.2, a temporary password is generated on startup. Get it with `docker compose logs qbittorrent`:
 
+The reconciler also enables the status-bar external IP display, disables torrent queueing, sets global share limits to ratio `1.0` or `60` seeding minutes, and triggers qBittorrent's search-plugin update check during each qBittorrent reconciliation pass.
+
 ```
 The WebUI administrator username is: admin
 The WebUI administrator password was not set. A temporary password is provided for this session: <some_password>

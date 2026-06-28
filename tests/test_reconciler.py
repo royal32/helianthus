@@ -217,6 +217,13 @@ class ReconcilerTests(unittest.TestCase):
                 "temp_path": "/data/torrents/incomplete",
                 "temp_path_enabled": True,
                 "use_category_paths_in_manual_mode": False,
+                "status_bar_external_ip": False,
+                "queueing_enabled": True,
+                "max_ratio_enabled": False,
+                "max_ratio": -1,
+                "max_seeding_time_enabled": False,
+                "max_seeding_time": -1,
+                "max_ratio_act": 1,
                 "listen_port": 50000,
             },
             {
@@ -226,7 +233,19 @@ class ReconcilerTests(unittest.TestCase):
             50000,
         )
 
-        self.assertEqual(updates, {"use_category_paths_in_manual_mode": True})
+        self.assertEqual(
+            updates,
+            {
+                "use_category_paths_in_manual_mode": True,
+                "status_bar_external_ip": True,
+                "queueing_enabled": False,
+                "max_ratio_enabled": True,
+                "max_ratio": 1.0,
+                "max_seeding_time_enabled": True,
+                "max_seeding_time": 60,
+                "max_ratio_act": 0,
+            },
+        )
 
     def test_qbittorrent_torrents_marker_is_placed_in_download_root(self) -> None:
         with mock.patch.object(reconciler, "exec_in_service") as exec_in_service:

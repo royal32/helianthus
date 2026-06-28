@@ -2303,6 +2303,20 @@ def desired_qbittorrent_preference_updates(
         desired_preferences["temp_path_enabled"] = True
     if preferences.get("use_category_paths_in_manual_mode") is not True:
         desired_preferences["use_category_paths_in_manual_mode"] = True
+    if preferences.get("status_bar_external_ip") is not True:
+        desired_preferences["status_bar_external_ip"] = True
+    if preferences.get("queueing_enabled") is not False:
+        desired_preferences["queueing_enabled"] = False
+    if preferences.get("max_ratio_enabled") is not True:
+        desired_preferences["max_ratio_enabled"] = True
+    if float(preferences.get("max_ratio") or 0) != 1.0:
+        desired_preferences["max_ratio"] = 1.0
+    if preferences.get("max_seeding_time_enabled") is not True:
+        desired_preferences["max_seeding_time_enabled"] = True
+    if int(preferences.get("max_seeding_time") or 0) != 60:
+        desired_preferences["max_seeding_time"] = 60
+    if int(preferences.get("max_ratio_act") or 0) != 0:
+        desired_preferences["max_ratio_act"] = 0
     if forwarded_port is not None and preferences.get("listen_port") != forwarded_port:
         desired_preferences["listen_port"] = forwarded_port
     return desired_preferences
@@ -2314,6 +2328,14 @@ def managed_qbittorrent_category_paths(env: dict[str, str], running_services: se
         for arr_service in ARR_SERVICES
         if arr_service.service_name in running_services
     }
+
+
+def update_qbittorrent_search_plugins(qbit: QBittorrentClient) -> None:
+    try:
+        qbit.request_json("POST", "/api/v2/search/updatePlugins", expect_json=False)
+        log("Triggered qBittorrent search plugin update check")
+    except RuntimeError as exc:
+        log(f"Skipping qBittorrent search plugin update check after API error: {exc}")
 
 
 def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
@@ -2335,6 +2357,7 @@ def ensure_qbittorrent_paths_and_categories(env: dict[str, str], running_service
 
     qbit = QBittorrentClient(env["QBITTORRENT_USERNAME"], env["QBITTORRENT_PASSWORD"])
     qbit.login()
+    update_qbittorrent_search_plugins(qbit)
     preferences = qbit.request_json("GET", "/api/v2/app/preferences")
 
     forwarded_port_path = get_config_root(env) / "pia-shared" / "port.dat"
