@@ -198,6 +198,18 @@ class ReconcilerTests(unittest.TestCase):
             153.6,
         )
 
+    def test_arr_quality_profiles_to_delete_keeps_only_managed_profile(self) -> None:
+        profiles = [
+            {"id": 1, "name": "Any"},
+            {"id": 2, "name": "Public 4K Preferred"},
+            {"id": 3, "name": "HD-1080p"},
+        ]
+
+        self.assertEqual(
+            [profile["name"] for profile in reconciler.arr_quality_profiles_to_delete(profiles, 2)],
+            ["Any", "HD-1080p"],
+        )
+
     def test_qbittorrent_preferences_enable_category_paths_in_manual_mode(self) -> None:
         updates = reconciler.desired_qbittorrent_preference_updates(
             {

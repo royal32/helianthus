@@ -1131,6 +1131,9 @@ class ArrApi:
     def update_quality_profile(self, item_id: int, payload: dict[str, Any]) -> None:
         self._try_put(f"{self.api_base}/qualityprofile", item_id, payload)
 
+    def delete_quality_profile(self, item_id: int) -> None:
+        self.client.request_json("DELETE", f"{self.api_base}/qualityprofile/{item_id}", expect_json=False)
+
     def get_custom_formats(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/customformat") or []
 
@@ -1164,6 +1167,14 @@ class ArrApi:
     def create_root_folder(self, path: str) -> None:
         payload: dict[str, Any] = {"path": path}
         self.client.request_json("POST", f"{self.api_base}/rootfolder", payload=payload)
+
+    def get_library_items(self) -> list[dict[str, Any]]:
+        resource = "series" if self.service.service_name == "sonarr" else "movie"
+        return self.client.request_json("GET", f"{self.api_base}/{resource}") or []
+
+    def update_library_item(self, payload: dict[str, Any]) -> None:
+        resource = "series" if self.service.service_name == "sonarr" else "movie"
+        self.client.request_json("PUT", f"{self.api_base}/{resource}/{payload['id']}", payload=payload)
 
     def get_download_clients(self) -> list[dict[str, Any]]:
         return self.client.request_json("GET", f"{self.api_base}/downloadclient") or []
@@ -2694,21 +2705,96 @@ def ensure_arr_public_quality_profile(arr_api: ArrApi, env: dict[str, str], dry_
         desired["id"] = existing["id"]
         if public_quality_profile_matches(existing, desired):
             log(f"{arr_api.service.display_name} quality profile {profile_name} already matches the desired state")
+            ensure_only_arr_public_quality_profile(arr_api, profile_name, int(existing["id"]), dry_run)
             return
 
     if dry_run:
         action = "update" if existing is not None else "create"
         log(f"[dry-run] Would {action} {arr_api.service.display_name} quality profile {profile_name}")
+        ensure_only_arr_public_quality_profile(
+            arr_api,
+            profile_name,
+            int(existing["id"]) if existing is not None and existing.get("id") is not None else -1,
+            dry_run,
+        )
         return
 
     if existing is not None:
         arr_api.update_quality_profile(int(existing["id"]), desired)
         log(f"Updated {arr_api.service.display_name} quality profile {profile_name}")
+        ensure_only_arr_public_quality_profile(arr_api, profile_name, int(existing["id"]), dry_run)
         return
 
     desired.pop("id", None)
-    arr_api.create_quality_profile(desired)
+    created = arr_api.create_quality_profile(desired)
     log(f"Created {arr_api.service.display_name} quality profile {profile_name}")
+    profile_id = int(created["id"]) if created.get("id") is not None else find_arr_quality_profile_id(arr_api, profile_name)
+    ensure_only_arr_public_quality_profile(arr_api, profile_name, profile_id, dry_run)
+
+
+def find_arr_quality_profile_id(arr_api: ArrApi, profile_name: str) -> int:
+    profile = next(
+        (
+            item
+            for item in arr_api.get_quality_profiles()
+            if item.get("name", "").lower() == profile_name.lower()
+        ),
+        None,
+    )
+    if profile is None or profile.get("id") is None:
+        raise RuntimeError(f"{arr_api.service.display_name} quality profile {profile_name} was not found")
+    return int(profile["id"])
+
+
+def arr_quality_profiles_to_delete(profiles: list[dict[str, Any]], desired_profile_id: int) -> list[dict[str, Any]]:
+    return [
+        profile
+        for profile in profiles
+        if profile.get("id") is not None and int(profile["id"]) != desired_profile_id
+    ]
+
+
+def ensure_arr_library_items_quality_profile(arr_api: ArrApi, desired_profile_id: int, dry_run: bool) -> None:
+    changed = 0
+    for item in arr_api.get_library_items():
+        if int(item.get("qualityProfileId") or -1) == desired_profile_id:
+            continue
+        changed += 1
+        if dry_run:
+            continue
+        updated = copy.deepcopy(item)
+        updated["qualityProfileId"] = desired_profile_id
+        arr_api.update_library_item(updated)
+
+    if changed:
+        action = "Would update" if dry_run else "Updated"
+        log(f"{action} {changed} {arr_api.service.display_name} item(s) to use the managed quality profile")
+
+
+def ensure_only_arr_public_quality_profile(
+    arr_api: ArrApi,
+    profile_name: str,
+    desired_profile_id: int,
+    dry_run: bool,
+) -> None:
+    if desired_profile_id < 0:
+        log(f"Skipping {arr_api.service.display_name} quality profile pruning until {profile_name} exists")
+        return
+
+    ensure_arr_library_items_quality_profile(arr_api, desired_profile_id, dry_run)
+    profiles_to_delete = arr_quality_profiles_to_delete(arr_api.get_quality_profiles(), desired_profile_id)
+    if not profiles_to_delete:
+        log(f"{arr_api.service.display_name} has only the managed quality profile")
+        return
+
+    if dry_run:
+        names = ", ".join(str(profile.get("name", profile["id"])) for profile in profiles_to_delete)
+        log(f"[dry-run] Would delete {arr_api.service.display_name} quality profile(s): {names}")
+        return
+
+    for profile in profiles_to_delete:
+        arr_api.delete_quality_profile(int(profile["id"]))
+        log(f"Deleted {arr_api.service.display_name} quality profile {profile.get('name', profile['id'])}")
 
 
 def ensure_arr_preferred_language_custom_format(arr_api: ArrApi, dry_run: bool) -> int | None:
