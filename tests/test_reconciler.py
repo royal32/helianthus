@@ -88,6 +88,72 @@ class ReconcilerTests(unittest.TestCase):
         self.assertIn('api_key = "sonarr-key"', config)
         self.assertIn('api_key = "radarr-key"', config)
 
+    def test_cleanuparr_download_client_uses_stack_qbittorrent_connection(self) -> None:
+        payload = reconciler.desired_cleanuparr_download_client(
+            {
+                "QBITTORRENT_USERNAME": "admin",
+                "QBITTORRENT_PASSWORD": "secret",
+                "QBITTORRENT_SAVE_PATH": "/data/torrents",
+                "TAILNET_DOMAIN": "example.ts.net",
+                "TSDPROXY_URL_SCHEME": "https",
+            }
+        )
+
+        self.assertEqual(payload["typeName"], "qBittorrent")
+        self.assertEqual(payload["type"], "Torrent")
+        self.assertEqual(payload["host"], "http://vpn:8080")
+        self.assertEqual(payload["externalUrl"], "https://qbittorrent.example.ts.net")
+        self.assertIsNone(payload["downloadDirectorySource"])
+        self.assertIsNone(payload["downloadDirectoryTarget"])
+
+    def test_cleanuparr_download_client_adds_path_mapping_for_custom_qbit_path(self) -> None:
+        payload = reconciler.desired_cleanuparr_download_client(
+            {
+                "QBITTORRENT_USERNAME": "admin",
+                "QBITTORRENT_PASSWORD": "secret",
+                "QBITTORRENT_SAVE_PATH": "/downloads",
+                "TAILNET_DOMAIN": "",
+            }
+        )
+
+        self.assertEqual(payload["downloadDirectorySource"], "/downloads")
+        self.assertEqual(payload["downloadDirectoryTarget"], "/data/torrents")
+
+    def test_cleanuparr_arr_instance_uses_discovered_arr_key(self) -> None:
+        payload = reconciler.desired_cleanuparr_arr_instance(
+            reconciler.ARR_SERVICES[0],
+            {
+                "SONARR_API_KEY": "sonarr-key",
+                "TAILNET_DOMAIN": "example.ts.net",
+                "TSDPROXY_URL_SCHEME": "https",
+            },
+        )
+
+        self.assertEqual(payload["name"], "Sonarr")
+        self.assertEqual(payload["url"], "http://sonarr:8989")
+        self.assertEqual(payload["apiKey"], "sonarr-key")
+        self.assertEqual(payload["version"], 4.0)
+        self.assertEqual(payload["externalUrl"], "https://sonarr.example.ts.net")
+
+    def test_cleanuparr_matching_ignores_secret_fields(self) -> None:
+        desired = {
+            "enabled": True,
+            "name": "qBittorrent",
+            "typeName": "qBittorrent",
+            "type": "Torrent",
+            "host": "http://vpn:8080",
+            "username": "admin",
+            "password": "secret",
+            "urlBase": "",
+            "externalUrl": None,
+            "downloadDirectorySource": None,
+            "downloadDirectoryTarget": None,
+        }
+        existing = dict(desired)
+        existing["password"] = "********"
+
+        self.assertTrue(reconciler.cleanuparr_download_client_matches(existing, desired))
+
     def test_public_quality_profile_excludes_cam_and_prefers_4k_cutoff(self) -> None:
         source = {
             "name": "Any",

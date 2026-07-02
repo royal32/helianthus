@@ -469,14 +469,14 @@ services:
       start_period: 30s
       retries: 10
     volumes:
-      - ${CONFIG_ROOT:-.}/cleanuparr/logs:/var/logs
-      - ${CONFIG_ROOT:-.}/cleanuparr/ignored.txt:/usr/ignored.txt
-      - ${CONFIG_ROOT:-.}/cleanuparr/blacklist.json:/usr/blacklist.json
       - ${CONFIG_ROOT:-.}/cleanuparr:/config
+      - ${DOWNLOAD_ROOT}:/data/torrents
     environment:
+      - PORT=11011
       - TZ=${TIMEZONE}
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
+      - UMASK=022
     labels:
       - tsdproxy.enable=true
       - tsdproxy.name=cleanuparr

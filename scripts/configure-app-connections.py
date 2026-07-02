@@ -44,6 +44,12 @@ PREFERRED_LANGUAGE_CUSTOM_FORMAT_NAME = "English Preferred"
 PREFERRED_LANGUAGE_CUSTOM_FORMAT_SCORE = 100
 ENGLISH_LANGUAGE_VALUE = 1
 JELLYFIN_AUDIO_LANGUAGE_PREFERENCE = "eng"
+CLEANUPARR_INTERNAL_URL = "http://cleanuparr:11011"
+CLEANUPARR_QBITTORRENT_MOUNT_PATH = "/data/torrents"
+CLEANUPARR_ARR_VERSIONS = {
+    "sonarr": 4.0,
+    "radarr": 6.0,
+}
 TORRENT_MARKER_FILENAME = "THIS_IS_NOT_THE_MEDIA_LIBRARY.txt"
 TORRENT_MARKER_TEXT = """This folder is qBittorrent's download area, not the Jellyfin media library.
 
@@ -258,6 +264,16 @@ def write_reconciler_state(env: dict[str, str], state: dict[str, Any], dry_run: 
 
 def secret_fingerprint(*values: str) -> str:
     return hashlib.sha256("\0".join(values).encode()).hexdigest()
+
+
+def get_any_key(item: dict[str, Any], key: str, default: Any = None) -> Any:
+    if key in item:
+        return item[key]
+    lowered = key.lower()
+    for item_key, value in item.items():
+        if item_key.lower() == lowered:
+            return value
+    return default
 
 
 def read_xml_text(path: Path, tag_name: str) -> str:
@@ -1083,6 +1099,64 @@ class QuiApi:
 
     def test_indexer(self, indexer_id: int) -> dict[str, Any]:
         return self.client.request_json("POST", f"/api/torznab/indexers/{indexer_id}/test") or {}
+
+
+class CleanuparrApi:
+    def __init__(self, transport_service: str) -> None:
+        self.client = ContainerJsonClient(transport_service, CLEANUPARR_INTERNAL_URL)
+
+    def ensure_account(self, username: str, password: str) -> None:
+        status = self.client.request_json("GET", "/api/auth/status") or {}
+        if get_any_key(status, "setupCompleted") is True:
+            return
+
+        self.client.request_json(
+            "POST",
+            "/api/auth/setup/account",
+            payload={"username": username, "password": password},
+            accepted_statuses={201, 409},
+        )
+        self.client.request_json(
+            "POST",
+            "/api/auth/setup/complete",
+            accepted_statuses={200, 409},
+        )
+        log("Configured Cleanuparr admin account")
+
+    def login(self, username: str, password: str) -> None:
+        response = self.client.request_json(
+            "POST",
+            "/api/auth/login",
+            payload={"username": username, "password": password},
+        ) or {}
+        if get_any_key(response, "requiresTwoFactor") is True:
+            raise RuntimeError("Cleanuparr login requires 2FA; disable 2FA for the managed account or configure manually")
+
+        tokens = get_any_key(response, "tokens") or {}
+        access_token = get_any_key(tokens, "accessToken")
+        if not access_token:
+            raise RuntimeError("Cleanuparr login did not return an access token")
+        self.client.default_headers["Authorization"] = f"Bearer {access_token}"
+
+    def get_download_clients(self) -> list[dict[str, Any]]:
+        response = self.client.request_json("GET", "/api/configuration/download_client") or {}
+        clients = get_any_key(response, "clients", [])
+        return clients if isinstance(clients, list) else []
+
+    def create_download_client(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", "/api/configuration/download_client", payload=payload) or {}
+
+    def update_download_client(self, item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("PUT", f"/api/configuration/download_client/{item_id}", payload=payload) or {}
+
+    def get_arr_config(self, service_name: str) -> dict[str, Any]:
+        return self.client.request_json("GET", f"/api/configuration/{service_name}") or {}
+
+    def create_arr_instance(self, service_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("POST", f"/api/configuration/{service_name}/instances", payload=payload) or {}
+
+    def update_arr_instance(self, service_name: str, item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.client.request_json("PUT", f"/api/configuration/{service_name}/instances/{item_id}", payload=payload) or {}
 
 
 class ArrApi:
@@ -3408,6 +3482,196 @@ def ensure_profilarr_integrations(env: dict[str, str], running_services: set[str
         log(f"Updated Profilarr {arr_service.display_name} connection")
 
 
+def cleanuparr_transport_service(running_services: set[str]) -> str:
+    for service_name in ("sonarr", "radarr", "prowlarr", "bazarr"):
+        if service_name in running_services:
+            return service_name
+    raise RuntimeError("Cleanuparr automation needs a running service with curl to reach Cleanuparr")
+
+
+def desired_cleanuparr_download_client(env: dict[str, str]) -> dict[str, Any]:
+    download_directory_source = env.get("QBITTORRENT_SAVE_PATH", CLEANUPARR_QBITTORRENT_MOUNT_PATH)
+    path_mapping_needed = download_directory_source.rstrip("/") != CLEANUPARR_QBITTORRENT_MOUNT_PATH.rstrip("/")
+    return {
+        "enabled": True,
+        "name": "qBittorrent",
+        "typeName": "qBittorrent",
+        "type": "Torrent",
+        "host": "http://vpn:8080",
+        "username": env["QBITTORRENT_USERNAME"],
+        "password": env["QBITTORRENT_PASSWORD"],
+        "urlBase": "",
+        "externalUrl": build_external_url(env, "qbittorrent") or None,
+        "downloadDirectorySource": download_directory_source if path_mapping_needed else None,
+        "downloadDirectoryTarget": CLEANUPARR_QBITTORRENT_MOUNT_PATH if path_mapping_needed else None,
+    }
+
+
+def cleanuparr_value_matches(existing: dict[str, Any], key: str, desired: Any) -> bool:
+    existing_value = get_any_key(existing, key)
+    if existing_value is None and desired in {None, ""}:
+        return True
+    return str(existing_value or "") == str(desired or "")
+
+
+def cleanuparr_download_client_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    return all(
+        cleanuparr_value_matches(existing, key, desired[key])
+        for key in (
+            "enabled",
+            "name",
+            "typeName",
+            "type",
+            "host",
+            "username",
+            "urlBase",
+            "externalUrl",
+            "downloadDirectorySource",
+            "downloadDirectoryTarget",
+        )
+    )
+
+
+def desired_cleanuparr_arr_instance(arr_service: ArrService, env: dict[str, str]) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "name": arr_service.display_name,
+        "url": arr_service.internal_base_url,
+        "apiKey": env[arr_service.api_key_env],
+        "version": CLEANUPARR_ARR_VERSIONS[arr_service.service_name],
+        "externalUrl": build_external_url(env, arr_service.service_name) or None,
+    }
+
+
+def cleanuparr_arr_instance_matches(existing: dict[str, Any], desired: dict[str, Any]) -> bool:
+    return all(
+        cleanuparr_value_matches(existing, key, desired[key])
+        for key in ("enabled", "name", "url", "version", "externalUrl")
+    )
+
+
+def ensure_cleanuparr_download_client(
+    cleanuparr_api: CleanuparrApi,
+    env: dict[str, str],
+    state: dict[str, Any],
+    dry_run: bool,
+) -> None:
+    desired = desired_cleanuparr_download_client(env)
+    desired_fingerprint = secret_fingerprint(env["QBITTORRENT_USERNAME"], env["QBITTORRENT_PASSWORD"])
+    clients = cleanuparr_api.get_download_clients()
+    existing = next(
+        (
+            client
+            for client in clients
+            if get_any_key(client, "name") == desired["name"] or get_any_key(client, "typeName") == desired["typeName"]
+        ),
+        None,
+    )
+
+    existing_id = get_any_key(existing, "id") if existing else None
+    core_matches = existing is not None and cleanuparr_download_client_matches(existing, desired)
+    if core_matches and state.get("cleanuparr_qbittorrent_credentials") == desired_fingerprint:
+        log("Cleanuparr qBittorrent connection already matches the desired state")
+        return
+
+    if dry_run:
+        action = "update" if existing is not None else "create"
+        log(f"[dry-run] Would {action} Cleanuparr qBittorrent connection")
+        return
+
+    if existing is None:
+        cleanuparr_api.create_download_client(desired)
+        log("Created Cleanuparr qBittorrent connection")
+    else:
+        cleanuparr_api.update_download_client(str(existing_id), desired)
+        log("Updated Cleanuparr qBittorrent connection")
+    state["cleanuparr_qbittorrent_credentials"] = desired_fingerprint
+
+
+def ensure_cleanuparr_arr_instance(
+    cleanuparr_api: CleanuparrApi,
+    arr_service: ArrService,
+    env: dict[str, str],
+    state: dict[str, Any],
+    dry_run: bool,
+) -> None:
+    desired = desired_cleanuparr_arr_instance(arr_service, env)
+    desired_fingerprint = secret_fingerprint(env[arr_service.api_key_env])
+    config = cleanuparr_api.get_arr_config(arr_service.service_name)
+    instances = get_any_key(config, "instances", [])
+    if not isinstance(instances, list):
+        instances = []
+
+    existing = next(
+        (
+            instance
+            for instance in instances
+            if get_any_key(instance, "name") == desired["name"] or get_any_key(instance, "url") == desired["url"]
+        ),
+        None,
+    )
+    existing_id = get_any_key(existing, "id") if existing else None
+    state_key = f"cleanuparr_{arr_service.service_name}_api_key"
+    core_matches = existing is not None and cleanuparr_arr_instance_matches(existing, desired)
+    if core_matches and state.get(state_key) == desired_fingerprint:
+        log(f"Cleanuparr {arr_service.display_name} connection already matches the desired state")
+        return
+
+    if dry_run:
+        action = "update" if existing is not None else "create"
+        log(f"[dry-run] Would {action} Cleanuparr {arr_service.display_name} connection")
+        return
+
+    if existing is None:
+        cleanuparr_api.create_arr_instance(arr_service.service_name, desired)
+        log(f"Created Cleanuparr {arr_service.display_name} connection")
+    else:
+        cleanuparr_api.update_arr_instance(arr_service.service_name, str(existing_id), desired)
+        log(f"Updated Cleanuparr {arr_service.display_name} connection")
+    state[state_key] = desired_fingerprint
+
+
+def ensure_cleanuparr_integrations(
+    env: dict[str, str],
+    running_services: set[str],
+    state: dict[str, Any],
+    dry_run: bool,
+) -> None:
+    if "cleanuparr" not in running_services:
+        if profile_enabled(env, "cleanuparr"):
+            log("Skipping Cleanuparr automation because the service is not running")
+        return
+
+    if "qbittorrent" not in running_services:
+        log("Skipping Cleanuparr qBittorrent connection because qBittorrent is not running")
+        return
+
+    if not env.get("QBITTORRENT_USERNAME") or not env.get("QBITTORRENT_PASSWORD"):
+        log("Skipping Cleanuparr qBittorrent connection because qBittorrent credentials are empty")
+        return
+
+    if dry_run:
+        log("[dry-run] Would bootstrap/login to Cleanuparr")
+        log("[dry-run] Would create or update Cleanuparr qBittorrent connection")
+        for arr_service in ARR_SERVICES:
+            if arr_service.service_name in running_services and env.get(arr_service.api_key_env):
+                log(f"[dry-run] Would create or update Cleanuparr {arr_service.display_name} connection")
+        return
+
+    cleanuparr_api = CleanuparrApi(cleanuparr_transport_service(running_services))
+    cleanuparr_api.ensure_account(env["ADMIN_USERNAME"], env["GLOBAL_PASSWORD"])
+    cleanuparr_api.login(env["ADMIN_USERNAME"], env["GLOBAL_PASSWORD"])
+
+    ensure_cleanuparr_download_client(cleanuparr_api, env, state, dry_run)
+    for arr_service in ARR_SERVICES:
+        if arr_service.service_name not in running_services:
+            continue
+        if not env.get(arr_service.api_key_env):
+            log(f"Skipping Cleanuparr {arr_service.display_name} connection because {arr_service.api_key_env} is empty")
+            continue
+        ensure_cleanuparr_arr_instance(cleanuparr_api, arr_service, env, state, dry_run)
+
+
 def apply_capability_state(env: dict[str, str], running_services: set[str], dry_run: bool) -> None:
     downloads_configured = bool(env.get("PIA_USER") and env.get("PIA_PASS"))
     env["DOWNLOADS_AVAILABLE"] = "true" if downloads_configured and "qbittorrent" in running_services else "false"
@@ -3484,6 +3748,8 @@ def reconcile(args: argparse.Namespace) -> int:
     trailing_phases: list[tuple[str, Any]] = []
     if not args.skip_profilarr:
         trailing_phases.append(("Profilarr", lambda: ensure_profilarr_integrations(env, running_services, args.dry_run)))
+    if not args.skip_cleanuparr:
+        trailing_phases.append(("Cleanuparr", lambda: ensure_cleanuparr_integrations(env, running_services, state, args.dry_run)))
     trailing_phases.extend(
         [
             ("Unpackerr generated configuration", lambda: write_unpackerr_config(env, running_services, args.dry_run)),
@@ -3515,6 +3781,7 @@ def main() -> int:
         help="Skip qui initial setup, qBittorrent connection, and Prowlarr indexer discovery",
     )
     parser.add_argument("--skip-profilarr", action="store_true", help="Skip Profilarr Sonarr/Radarr connections")
+    parser.add_argument("--skip-cleanuparr", action="store_true", help="Skip Cleanuparr qBittorrent/Sonarr/Radarr connections")
     parser.add_argument("--loop", action="store_true", help="Reconcile periodically instead of exiting after one pass")
     parser.add_argument(
         "--interval",

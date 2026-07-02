@@ -49,7 +49,7 @@ Based on the docker-compose-nas project by AdrienPoupa
   - [Tailscale Access](#tailscale-access)
   - [Optional Services](#optional-services)
     - [FlareSolverr](#flaresolverr)
-    - [Decluttarr](#decluttarr)
+    - [Cleanuparr](#cleanuparr)
   - [Customization](#customization)
     - [Optional: Using the VPN for \*arr apps](#optional-using-the-vpn-for-arr-apps)
   - [Synology Quirks](#synology-quirks)
@@ -81,14 +81,15 @@ Based on the docker-compose-nas project by AdrienPoupa
 | [Watchtower](https://watchtower.nickfedor.com)                     | Automated Docker images update                                                                                                                                | [nicholas-fedor/watchtower](https://ghcr.io/nicholas-fedor/watchtower)                   |                        |
 | [Autoheal](https://github.com/willfarrell/docker-autoheal/)        | Monitor and restart unhealthy Docker containers                                                                                                               | [willfarrell/autoheal](https://hub.docker.com/r/willfarrell/autoheal)                    |                        |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr)       | Optional - Proxy server to bypass Cloudflare protection in Prowlarr<br/>Enable with `COMPOSE_PROFILES=flaresolverr`                                           | [flaresolverr/flaresolverr](https://hub.docker.com/r/flaresolverr/flaresolverr)          |                        |
-| [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional - Cleanuparr is a tool for automating the cleanup of unwanted or blocked files in Sonarr and Radarr<br/>Enable with `COMPOSE_PROFILES=cleanuparr`    | [cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                           | `cleanuparr.${TAILNET_DOMAIN}` |
+| [Cleanuparr](https://github.com/Cleanuparr/Cleanuparr)             | Optional, enabled by default - Download cleanup and queue management for the Servarr stack<br/>Disable by removing `cleanuparr` from `COMPOSE_PROFILES`       | [ghcr.io/cleanuparr/cleanuparr](https://ghcr.io/cleanuparr/cleanuparr)                   | `cleanuparr.${TAILNET_DOMAIN}` |
 | [Cross-Seed](https://github.com/cross-seed/cross-seed)             | Optional - Cross-Seed is a tool for automating the cross-seeding of torrents<br/>Enable with `COMPOSE_PROFILES=cross-seed`                                    | [cross-seed/cross-seed](https://ghcr.io/cross-seed/cross-seed)                           |                        |
 | [Autobrr](https://github.com/autobrr/autobrr)                      | Optional - Autobrr is a tool for automating the downloading of torrents<br/>Enable with `COMPOSE_PROFILES=autobrr`                                            | [autobrr/autobrr](https://ghcr.io/autobrr/autobrr)                                       | `autobrr.${TAILNET_DOMAIN}` |
 | [qui](https://github.com/autobrr/qui)                              | Optional - Modern web interface for managing qBittorrent<br/>Enable with `COMPOSE_PROFILES=qui`                                                               | [autobrr/qui](https://ghcr.io/autobrr/qui)                                                | `qui.${TAILNET_DOMAIN}` |
 | [Suggestarr](github.com/giuseppe99barchetta/SuggestArr)                      | Optional - SuggestArr is a project designed to automate media content recommendations and download requests<br/>Enable with `COMPOSE_PROFILES=suggestarr`                                            | [ciuse99/suggestarr](https://hub.docker.com/r/ciuse99/suggestarr)                                       | `suggestarr.${TAILNET_DOMAIN}` |
 
-Optional containers are not enabled by default, they need to be enabled,
-see [Optional Services](#optional-services) for more information.
+Optional containers are controlled by Compose profiles. The starter `.env.example` enables
+Cleanuparr by default; remove `cleanuparr` from `COMPOSE_PROFILES` to disable it.
+See [Optional Services](#optional-services) for more information.
 
 ## Quick Start
 
@@ -99,7 +100,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The Compose stack includes a `stack-setup` one-shot service and an always-on `stack-reconciler`. They idempotently create and repair the qBittorrent, qui, Sonarr, Radarr, Bazarr, Prowlarr, Profilarr, Jellyfin, Seerr, Homepage, and Unpackerr configuration and wiring. Generated application API keys are discovered from application state and are never written into `.env`.
+The Compose stack includes a `stack-setup` one-shot service and an always-on `stack-reconciler`. They idempotently create and repair the qBittorrent, qui, Sonarr, Radarr, Bazarr, Prowlarr, Profilarr, Cleanuparr, Jellyfin, Seerr, Homepage, and Unpackerr configuration and wiring. Generated application API keys are discovered from application state and are never written into `.env`.
 
 Bazarr is enabled in the initial stack, connected to Sonarr and Radarr, and configured with Podnapisi plus an English-only language profile. The English profile is applied automatically to new series and movies and to existing items that do not already have a profile.
 
@@ -135,7 +136,7 @@ The setup automation completes Jellyfin's startup wizard when Jellyfin has no us
 | `PIA_LOCAL_NETWORK`            | PIA local network                                                                                                                                                                                      | `192.168.0.0/16`                                 |
 | `ADMIN_USERNAME`               | Default username used when a service-specific username is blank                                                                                                                                        | `admin`                                          |
 | `GLOBAL_PASSWORD`              | Default password used when a service-specific password is blank                                                                                                                                        | `adminadmin`                                     |
-| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`flaresolverr`, `homepage`, `profilarr`, etc.)                                                                                                               |                                                  |
+| `COMPOSE_PROFILES`             | Optional Docker compose profiles to load (`cleanuparr`, `flaresolverr`, `homepage`, `profilarr`, etc.)                                                                                                 | `cleanuparr`                                     |
 | `LOCAL_NETWORK_HTTP_ACCESS`    | Whether setup should include direct LAN HTTP bindings for Jellyfin and Seerr in `COMPOSE_FILE`. Run `setup-stack.sh` after changing it.                                                                | `true`                                           |
 | `LOCAL_NETWORK_BIND_ADDRESS`   | Host address used for direct LAN HTTP bindings. Use `0.0.0.0` for all interfaces.                                                                                                                       | `0.0.0.0`                                        |
 | `JELLYFIN_LOCAL_NETWORK_PORT`  | Host port for direct LAN access to Jellyfin.                                                                                                                                                           | `8096`                                           |
@@ -425,16 +426,41 @@ flag back to `false` and rerun setup to restore HTTPS.
 
 ## Optional Services
 
-Optional services are not launched by default and enabled by appending their profile name to the
-`COMPOSE_PROFILES` environment variable (see [Docker documentation](https://docs.docker.com/compose/profiles)).
+Optional services are profile-gated through the `COMPOSE_PROFILES` environment variable
+(see [Docker documentation](https://docs.docker.com/compose/profiles)).
 
-Say you want to enable FlareSolverr, you should have `COMPOSE_PROFILES=flaresolverr`.
+Cleanuparr is optional but enabled in the starter `.env.example` with `COMPOSE_PROFILES=cleanuparr`.
+Remove `cleanuparr` from that list to disable it.
 
-Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=flaresolverr,homepage`.
+Say you want to enable FlareSolverr alongside the default Cleanuparr service, you should have
+`COMPOSE_PROFILES=cleanuparr,flaresolverr`.
+
+Multiple optional services can be enabled separated by commas: `COMPOSE_PROFILES=cleanuparr,flaresolverr,homepage`.
 
 ### FlareSolverr
 
 In Prowlarr, add the FlareSolverr indexer with the URL http://flaresolverr:8191/
+
+### Cleanuparr
+
+Cleanuparr is enabled by default in `.env.example` and is available at
+`${TSDPROXY_URL_SCHEME}://cleanuparr.${TAILNET_DOMAIN}` when Tailscale access is configured.
+Disable it by removing `cleanuparr` from `COMPOSE_PROFILES`.
+
+The container uses `ghcr.io/cleanuparr/cleanuparr:latest`, stores state under
+`${CONFIG_ROOT}/cleanuparr`, and mounts qBittorrent's download path at `/data/torrents` so
+unlinked-download handling sees the same download path that qBittorrent uses.
+
+Setup creates the Cleanuparr admin account from `ADMIN_USERNAME` and `GLOBAL_PASSWORD`,
+then creates or updates its qBittorrent, Sonarr, and Radarr connections using the internal
+Docker URLs and discovered API keys:
+
+- qBittorrent: `http://vpn:8080`
+- Sonarr: `http://sonarr:8989`
+- Radarr: `http://radarr:7878`
+
+Cleanup rules, seeding rules, orphan handling, and notification settings are left for you to
+choose in the Cleanuparr web UI. The reconciler only manages service credentials and URLs.
 
 ### Cross-Seed
 
